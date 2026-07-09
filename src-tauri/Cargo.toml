@@ -1,0 +1,31 @@
+[package]
+name = "inbox-tool"
+version = "0.1.0"
+description = "mybox - 本地化收集箱工具 V1"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "inbox_tool_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# SQLite 直接操作：bundled 编译内置 SQLite，避免系统版本差异
+rusqlite = { version = "0.32", features = ["bundled"] }
+# 生成条目唯一 id
+uuid = { version = "1", features = ["v4"] }
+# iCloud 同步：监听 sync 文件夹变化，触发跨设备重放
+notify = "6"

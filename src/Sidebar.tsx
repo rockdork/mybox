@@ -1,4 +1,5 @@
 import type { ItemType } from "./types";
+import { useEffect, useRef } from "react";
 import "./App.css";
 
 export type View = "main" | "workbench" | "settings";
@@ -60,6 +61,21 @@ export default function Sidebar({
   onAddNote,
   onAddTask,
 }: SidebarProps) {
+  const addRef = useRef<HTMLDivElement>(null);
+
+  // 点击浮窗外区域关闭
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (addRef.current && !addRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    // 用 mousedown（比 click 更快响应，避免穿透）
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddMenu, setShowAddMenu]);
+
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       {/* 品牌区 */}
@@ -97,11 +113,10 @@ export default function Sidebar({
       </div>
 
       {/* 添加按钮 */}
-      <div className="sidebar-add">
+      <div className="sidebar-add" ref={addRef}>
         <button
           className="add-btn"
           onClick={() => setShowAddMenu((v) => !v)}
-          onBlur={() => setTimeout(() => setShowAddMenu(false), 150)}
           title="添加"
         >
           <Ico d="M12 5v14M5 12h14" />

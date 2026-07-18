@@ -191,6 +191,7 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [resizing, setResizing] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [launcherTrigger, setLauncherTrigger] = useState(0);
   const [taskCollapsed, setTaskCollapsed] = useState<Record<string, boolean>>({});
 
   // 同步状态 + 跨设备刷新计数（供工作台监听自动重载）
@@ -757,6 +758,7 @@ function App() {
             onSettingsClick={() => setView("settings")}
             onAddNote={() => { setView("main"); setFilter("note"); setTimeout(() => titleRef.current?.focus(), 0); }}
             onAddTask={() => { setView("main"); setFilter("task"); setTimeout(() => titleRef.current?.focus(), 0); }}
+            onAddLauncher={() => { setView("workbench"); setLauncherTrigger((t) => t + 1); }}
             style={{ width: collapsed ? 68 : sidebarWidth, flexShrink: 0 }}
           />
 
@@ -772,7 +774,7 @@ function App() {
 
           <main className={`main${filter === "task" && view === "main" ? " task-main" : ""}`}>
             {view === "workbench" ? (
-              <WorkbenchView allItems={allItems} syncTick={syncTick} />
+              <WorkbenchView allItems={allItems} syncTick={syncTick} openFormTrigger={launcherTrigger} />
             ) : filter === "task" ? (
               <div className="task-layout">
                 <div className="task-list-pane">

@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getWorkbench, saveWorkbench, openLauncher } from "./api";
 import type {
   InboxItem,
@@ -60,7 +60,7 @@ function placeholderFor(kind: LauncherKind): string {
   }
 }
 
-function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick: number }) {
+function WorkbenchView({ allItems, syncTick, openFormTrigger }: { allItems: InboxItem[]; syncTick: number; openFormTrigger?: number }) {
   const [data, setData] = useState<WorkbenchData>({ groups: [], items: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -102,6 +102,16 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
     if (syncTick > 0) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncTick]);
+
+  // 外部触发打开添加弹窗（侧栏「+ → 添加跳转」）
+  const prevTriggerRef = useRef(openFormTrigger ?? 0);
+  useEffect(() => {
+    if (openFormTrigger !== undefined && openFormTrigger !== prevTriggerRef.current) {
+      prevTriggerRef.current = openFormTrigger;
+      openForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFormTrigger]);
 
   const persist = async (next: WorkbenchData) => {
     await saveWorkbench(next);

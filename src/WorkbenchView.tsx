@@ -652,7 +652,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
                 取消
               </button>
               <button className="btn btn-primary-lg" onClick={submit}>
-                {editingId ? "保存修改" : "添加"}
+                保存
               </button>
             </div>
           </div>

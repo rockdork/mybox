@@ -1573,7 +1573,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  margin: 0 0 4px;
+  margin: 0 0 20px;
 }
 .wb-chip {
   appearance: none;
@@ -1693,7 +1693,7 @@ body {
   justify-content: center;
 }
 .wb-section {
-  margin-bottom: 22px;
+  margin-bottom: 32px;
 }
 .wb-section-title {
   flex: 1;
@@ -1708,7 +1708,7 @@ body {
   align-items: center;
   gap: 6px;
   min-height: 24px;
-  margin: 4px 2px 10px;
+  margin: 8px 2px 16px;
 }
 .wb-section-actions {
   display: flex;
@@ -1819,7 +1819,7 @@ body {
 .wb-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 12px;
+  gap: 18px;
   justify-content: start; /* 少量项时左对齐，不撑满整行 */
 }
 .wb-card {
@@ -1828,7 +1828,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 18px 8px 14px;
+  padding: 20px 12px 16px;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
   background: var(--panel);

@@ -383,7 +383,25 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
               ) : (
                 <div className="wb-section-title">
                   {s.title}
-                  {s.groupId !== null && collapsed && s.items.length > 0 && (
+                  {s.groupId !== null && (
+                    <button
+                      className="wb-chevron-inline"
+                      title={collapsed ? "展开" : "收起"}
+                      onClick={() => toggleGroupCollapsed(s.groupId as string)}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                        style={{
+                          width: 14,
+                          height: 14,
+                          transition: 'transform var(--dur-fast) var(--ease)',
+                          transform: collapsed ? 'rotate(-90deg)' : undefined,
+                        }}>
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                  )}
+                  {collapsed && s.items.length > 0 && (
                     <span className="wb-count"> {s.items.length}</span>
                   )}
                 </div>
@@ -410,16 +428,6 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
                       <circle cx="9" cy="18" r="1.3" /><circle cx="15" cy="18" r="1.3" />
                     </svg>
                   </span>
-                  <button
-                    className="wb-chevron"
-                    title={collapsed ? "展开" : "收起"}
-                    onClick={() => toggleGroupCollapsed(s.groupId as string)}
-                  >
-                    <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
-                  </button>
                   <button
                     className="wb-sec-edit"
                     title="重命名分组"

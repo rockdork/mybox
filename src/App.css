@@ -1790,33 +1790,24 @@ body {
 .wb-grip:active {
   cursor: grabbing;
 }
-.wb-chevron {
+/* 折叠箭头紧跟分组名称（行内，不放在操作按钮区） */
+.wb-chevron-inline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
   padding: 0;
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-3);
   cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  vertical-align: middle;
 }
-.wb-chevron:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-.wb-chevron .wb-ico {
-  width: 16px;
-  height: 16px;
-  transform: rotate(90deg);
-  transition: transform var(--dur-fast) var(--ease);
-}
-.wb-section.collapsed .wb-chevron .wb-ico {
-  transform: rotate(0deg);
+.wb-chevron-inline:hover {
+  color: var(--text-2);
 }
 .wb-count {
   color: var(--text-3);

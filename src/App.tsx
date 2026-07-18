@@ -186,8 +186,8 @@ function App() {
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [moving, setMoving] = useState(false);
-  const [view, setView] = useState<View>("main");
-  const [collapsed, setCollapsed] = useState(false);
+  const [view, setView] = useState<View>("workbench");
+  const [collapsed, setCollapsed] = useState(true);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [taskCollapsed, setTaskCollapsed] = useState<Record<string, boolean>>({});
 

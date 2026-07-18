@@ -43,6 +43,11 @@
   --kind-obsidian: rgba(139, 92, 246, 0.14);
   --kind-app: rgba(52, 199, 89, 0.14);
   --kind-folder: rgba(255, 149, 0, 0.14);
+  /* 工作台类型图标前景色（图标描边用） */
+  --kind-web-fg: #007AFF;
+  --kind-obsidian-fg: #8B5CF6;
+  --kind-app-fg: #34C759;
+  --kind-folder-fg: #FF9500;
 
   /* 阴影 / 层级 / 聚焦环 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -131,6 +136,11 @@
   --kind-obsidian: rgba(139, 92, 246, 0.26);
   --kind-app: rgba(48, 209, 88, 0.24);
   --kind-folder: rgba(255, 159, 10, 0.24);
+  /* 工作台类型图标前景色（深色更亮） */
+  --kind-web-fg: #0A84FF;
+  --kind-obsidian-fg: #BB8AF7;
+  --kind-app-fg: #30D158;
+  --kind-folder-fg: #FF9F0A;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.50);
@@ -1845,41 +1855,40 @@ body {
 .wb-card:active {
   transform: translateY(1px);
 }
-.wb-card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow-md);
-  transform: translateY(-1px);
-}
-:root[data-theme="dark"] .wb-card.selected {
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow-md);
-}
 .wb-card.dragging {
   opacity: 0.45;
 }
 .wb-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--r-xl);
-  border: none;
-  background: var(--accent-weak);
-  font-size: 27px;
-  line-height: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-lg);
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--accent-weak);
+  color: var(--accent);
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease),
     background var(--dur-fast) var(--ease);
 }
-.wb-card:hover .wb-icon {
-  transform: scale(1.05);
+.wb-icon .wb-kind-ico {
+  width: 22px;
+  height: 22px;
 }
-.wb-icon.kind-web { background: var(--kind-web); }
-.wb-icon.kind-obsidian { background: var(--kind-obsidian); }
-.wb-icon.kind-app { background: var(--kind-app); }
-.wb-icon.kind-folder { background: var(--kind-folder); }
+.wb-icon .wb-icon-custom {
+  font-size: 22px;
+  line-height: 1;
+}
+.wb-card:hover .wb-icon {
+  transform: scale(1.06);
+}
+.wb-icon.kind-web { background: var(--kind-web); color: var(--kind-web-fg); }
+.wb-icon.kind-obsidian { background: var(--kind-obsidian); color: var(--kind-obsidian-fg); }
+.wb-icon.kind-app { background: var(--kind-app); color: var(--kind-app-fg); }
+.wb-icon.kind-folder { background: var(--kind-folder); color: var(--kind-folder-fg); }
 .wb-name {
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
+  font-weight: 500;
   color: var(--text);
   text-align: center;
   max-width: 100%;

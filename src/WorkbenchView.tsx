@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getWorkbench, saveWorkbench, openLauncher } from "./api";
 import type {
   InboxItem,
@@ -12,11 +12,33 @@ import { ErrorBanner } from "./ErrorBanner";
 import CalendarPanel from "./CalendarPanel";
 import "./App.css";
 
-const KIND_ICONS: Record<LauncherKind, string> = {
-  web: "🌐",
-  obsidian: "📓",
-  app: "📦",
-  folder: "📁",
+// 类型图标（lucide 线性图标，统一描边风格；设计规范要求图标库锁定 lucide）
+const KIND_ICON_PATHS: Record<LauncherKind, React.ReactNode> = {
+  web: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
+    </>
+  ),
+  obsidian: (
+    <>
+      <path d="M12 7v14" />
+      <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-5a4 4 0 0 0-4 4 4 4 0 0 0-4-4z" />
+    </>
+  ),
+  app: (
+    <>
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
+    </>
+  ),
+  folder: (
+    <>
+      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    </>
+  ),
 };
 const KIND_LABELS: Record<LauncherKind, string> = {
   web: "网页",
@@ -60,13 +82,6 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<LauncherKind | "">("");
 
-  // 快速跳转（搜索 + 键盘导航）
-  const [query, setQuery] = useState("");
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
   const load = async () => {
     setLoading(true);
     try {
@@ -87,27 +102,6 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
     if (syncTick > 0) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncTick]);
-
-  // 进入工作台即聚焦跳转框，支持「输入即过滤 · 回车即打开」
-  useEffect(() => {
-    searchRef.current?.focus();
-  }, []);
-
-  // ⌘K / Ctrl+K 全局聚焦跳转栏（launcher 手感）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        const el = searchRef.current;
-        if (el) {
-          el.focus();
-          el.select();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const persist = async (next: WorkbenchData) => {
     await saveWorkbench(next);
@@ -290,60 +284,15 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       : []),
   ];
 
-  // ===== 快速跳转：搜索过滤 + 类型筛选 + 键盘导航 =====
-  const q = query.trim().toLowerCase();
+  // ===== 类型筛选（按 launcher 类型收窄，与分组并列） =====
   const filteredSections = useMemo(() => {
-    const match = (it: LauncherItem) =>
-      it.name.toLowerCase().includes(q) ||
-      it.target.toLowerCase().includes(q) ||
-      KIND_LABELS[it.kind].includes(q) ||
-      (data.groups.find((g) => g.id === it.group_id)?.name || "")
-        .toLowerCase()
-        .includes(q);
-    const filtering = q || kindFilter;
+    if (!kindFilter) return sections;
     return sections
-      .map((s) => {
-        let items = s.items;
-        if (q) items = items.filter(match);
-        if (kindFilter) items = items.filter((it) => it.kind === kindFilter);
-        return { ...s, items };
-      })
-      .filter((s) => (filtering ? s.items.length > 0 : true));
-  }, [sections, q, kindFilter, data.groups]);
+      .map((s) => ({ ...s, items: s.items.filter((it) => it.kind === kindFilter) }))
+      .filter((s) => s.items.length > 0);
+  }, [sections, kindFilter, data.groups]);
 
   const flat = useMemo(() => filteredSections.flatMap((s) => s.items), [filteredSections]);
-  const idxOf = useMemo(() => {
-    const m = new Map<string, number>();
-    flat.forEach((it, i) => m.set(it.id, i));
-    return m;
-  }, [flat]);
-
-  // 键盘选中的卡片滚动到可视区域
-  useEffect(() => {
-    const it = flat[selectedIdx];
-    if (it) cardRefs.current.get(it.id)?.scrollIntoView({ block: "nearest" });
-  }, [selectedIdx, flat]);
-
-  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.min(i + 1, flat.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const it = flat[selectedIdx];
-      if (it) openItem(it);
-    } else if (e.key === "Escape") {
-      if (q) {
-        setQuery("");
-        setSelectedIdx(0);
-      } else {
-        (e.target as HTMLInputElement).blur();
-      }
-    }
-  };
 
   return (
     <div className="wb-layout">
@@ -352,47 +301,12 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       <div className="wb">
       <div className="wb-head">
         <div className="wb-title">工作台</div>
-        <div className={`wb-search-wrap${searchFocused ? " focused" : ""}`}>
-          <svg className="wb-search-ico" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
-          <input
-            ref={searchRef}
-            className="wb-search"
-            value={query}
-            placeholder="跳转：输入名称快速打开（⌘K 聚焦）"
-            onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            onKeyDown={onSearchKey}
-          />
-          {query && (
-            <button
-              className="wb-search-clear"
-              onClick={() => { setQuery(""); setSelectedIdx(0); searchRef.current?.focus(); }}
-              title="清除"
-              aria-label="清除"
-            >
-              <svg viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          )}
-        </div>
         <button className="btn primary" onClick={() => openForm()}>
           ＋ 添加
         </button>
       </div>
-      {searchFocused && (
-        <div className="wb-search-hint">
-          输入关键词过滤 · ↑↓ 选择 · ↵ 打开 · Esc 清空 · ⌘K 聚焦
-        </div>
-      )}
 
-      {/* 类型筛选 chips：与搜索词取交集 */}
+      {/* 类型筛选 chips：按 launcher 类型收窄 */}
       <div className="wb-filters" role="tablist" aria-label="按类型筛选">
         {(["", "web", "obsidian", "app", "folder"] as const).map((k) => (
           <button
@@ -401,7 +315,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
             role="tab"
             aria-selected={kindFilter === k}
             className={`wb-chip${kindFilter === k ? " active" : ""}`}
-            onClick={() => { setKindFilter(k); setSelectedIdx(0); }}
+            onClick={() => setKindFilter(k)}
           >
             {k === "" ? "全部" : KIND_LABELS[k]}
           </button>
@@ -537,14 +451,8 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
               <div className="wb-grid">
                 {s.items.map((it) => (
                   <div
-                    className={`wb-card${selectedIdx === (idxOf.get(it.id) ?? -1) ? " selected" : ""}${
-                      dragItemId === it.id ? " dragging" : ""
-                    }`}
+                    className={`wb-card${dragItemId === it.id ? " dragging" : ""}`}
                     key={it.id}
-                    ref={(el) => {
-                      if (el) cardRefs.current.set(it.id, el);
-                      else cardRefs.current.delete(it.id);
-                    }}
                     draggable
                     onDragStart={(e) => {
                       setDragItemId(it.id);
@@ -558,7 +466,21 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
                     title={`打开 ${it.name}（拖拽可移动分组）`}
                   >
                     <div className={`wb-icon kind-${it.kind}`}>
-                      {it.icon || KIND_ICONS[it.kind]}
+                      {it.icon ? (
+                        <span className="wb-icon-custom">{it.icon}</span>
+                      ) : (
+                        <svg
+                          className="wb-kind-ico"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          {KIND_ICON_PATHS[it.kind]}
+                        </svg>
+                      )}
                     </div>
                     <div className="wb-name" title={it.name}>
                       {it.name}
@@ -593,10 +515,9 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
         );
       })}
 
-      {(query.trim() || kindFilter) && flat.length === 0 && (
+      {kindFilter && flat.length === 0 && (
         <div className="wb-no-results">
-          没有匹配{kindFilter ? `「${KIND_LABELS[kindFilter]}」类型` : ""}
-          {query.trim() ? `「${query.trim()}」` : ""}的跳转项
+          没有「{KIND_LABELS[kindFilter]}」类型的跳转项
         </div>
       )}
 
@@ -646,7 +567,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
               <input
                 value={fIcon}
                 onChange={(e) => setFIcon(e.target.value)}
-                placeholder="留空用默认 emoji"
+                placeholder="留空用类型图标"
               />
             </label>
             <label className="modal-field">

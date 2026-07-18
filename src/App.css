@@ -1700,7 +1700,8 @@ body {
   min-width: 0;
   font-size: var(--fs-small);
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--text-2);
+  letter-spacing: 0.01em;
   margin: 0;
 }
 .wb-section-head {

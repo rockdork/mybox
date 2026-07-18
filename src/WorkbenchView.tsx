@@ -151,9 +151,16 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
     let groupId = fGroup;
     const ng = fNewGroup.trim();
     if (ng) {
-      const g: LauncherGroup = { id: crypto.randomUUID(), name: ng };
-      groups.push(g);
-      groupId = g.id;
+      const existing = groups.find(
+        (g) => g.name.trim().toLowerCase() === ng.toLowerCase()
+      );
+      if (existing) {
+        groupId = existing.id; // 分组名已存在 → 复用，避免重复
+      } else {
+        const g: LauncherGroup = { id: crypto.randomUUID(), name: ng };
+        groups.push(g);
+        groupId = g.id;
+      }
     }
     let items: LauncherItem[];
     if (editingId) {
@@ -220,8 +227,22 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
   const commitRenameGroup = async () => {
     if (!editingGroupId) return;
     const name = groupDraft.trim();
+    if (!name) {
+      setEditingGroupId(null);
+      setGroupDraft("");
+      return;
+    }
+    const dup = data.groups.find(
+      (g) => g.id !== editingGroupId && g.name.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (dup) {
+      setError(`分组名「${name}」已存在，请换一个`);
+      setEditingGroupId(null);
+      setGroupDraft("");
+      return;
+    }
     const groups = data.groups.map((g) =>
-      g.id === editingGroupId ? { ...g, name: name || g.name } : g
+      g.id === editingGroupId ? { ...g, name } : g
     );
     setEditingGroupId(null);
     setGroupDraft("");
@@ -279,9 +300,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       title: g.name,
       items: data.items.filter((i) => i.group_id === g.id),
     })),
-    ...(ungrouped.length
-      ? [{ key: "__ungrouped", groupId: null, title: "未分组", items: ungrouped }]
-      : []),
+    { key: "__ungrouped", groupId: null, title: "未分组", items: ungrouped },
   ];
 
   // ===== 类型筛选（按 launcher 类型收窄，与分组并列） =====

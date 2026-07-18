@@ -57,6 +57,8 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
 
   const [dragGroupId, setDragGroupId] = useState<string | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [kindFilter, setKindFilter] = useState<LauncherKind | "">("");
 
   // 快速跳转（搜索 + 键盘导航）
   const [query, setQuery] = useState("");
@@ -89,6 +91,22 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
   // 进入工作台即聚焦跳转框，支持「输入即过滤 · 回车即打开」
   useEffect(() => {
     searchRef.current?.focus();
+  }, []);
+
+  // ⌘K / Ctrl+K 全局聚焦跳转栏（launcher 手感）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        const el = searchRef.current;
+        if (el) {
+          el.focus();
+          el.select();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const persist = async (next: WorkbenchData) => {
@@ -231,6 +249,17 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
     }
   };
 
+  const moveItemToGroup = async (itemId: string, groupId: string | null) => {
+    const items = data.items.map((i) =>
+      i.id === itemId ? { ...i, group_id: groupId ?? "" } : i
+    );
+    try {
+      await persist({ groups: data.groups, items });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const moveGroup = async (fromId: string, toId: string) => {
     if (fromId === toId) return;
     const groups = [...data.groups];
@@ -261,10 +290,9 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       : []),
   ];
 
-  // ===== 快速跳转：搜索过滤 + 键盘导航 =====
+  // ===== 快速跳转：搜索过滤 + 类型筛选 + 键盘导航 =====
   const q = query.trim().toLowerCase();
   const filteredSections = useMemo(() => {
-    if (!q) return sections;
     const match = (it: LauncherItem) =>
       it.name.toLowerCase().includes(q) ||
       it.target.toLowerCase().includes(q) ||
@@ -272,10 +300,16 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       (data.groups.find((g) => g.id === it.group_id)?.name || "")
         .toLowerCase()
         .includes(q);
+    const filtering = q || kindFilter;
     return sections
-      .map((s) => ({ ...s, items: s.items.filter(match) }))
-      .filter((s) => s.items.length > 0);
-  }, [sections, q, data.groups]);
+      .map((s) => {
+        let items = s.items;
+        if (q) items = items.filter(match);
+        if (kindFilter) items = items.filter((it) => it.kind === kindFilter);
+        return { ...s, items };
+      })
+      .filter((s) => (filtering ? s.items.length > 0 : true));
+  }, [sections, q, kindFilter, data.groups]);
 
   const flat = useMemo(() => filteredSections.flatMap((s) => s.items), [filteredSections]);
   const idxOf = useMemo(() => {
@@ -328,7 +362,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
             ref={searchRef}
             className="wb-search"
             value={query}
-            placeholder="跳转：输入名称快速打开…"
+            placeholder="跳转：输入名称快速打开（⌘K 聚焦）"
             onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
@@ -354,9 +388,25 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       </div>
       {searchFocused && (
         <div className="wb-search-hint">
-          输入关键词过滤 · ↑↓ 选择 · ↵ 打开 · Esc 清空
+          输入关键词过滤 · ↑↓ 选择 · ↵ 打开 · Esc 清空 · ⌘K 聚焦
         </div>
       )}
+
+      {/* 类型筛选 chips：与搜索词取交集 */}
+      <div className="wb-filters" role="tablist" aria-label="按类型筛选">
+        {(["", "web", "obsidian", "app", "folder"] as const).map((k) => (
+          <button
+            key={k || "all"}
+            type="button"
+            role="tab"
+            aria-selected={kindFilter === k}
+            className={`wb-chip${kindFilter === k ? " active" : ""}`}
+            onClick={() => { setKindFilter(k); setSelectedIdx(0); }}
+          >
+            {k === "" ? "全部" : KIND_LABELS[k]}
+          </button>
+        ))}
+      </div>
 
       <ErrorBanner msg={error} onClose={() => setError("")} />
       {loading && <div className="empty">加载中…</div>}
@@ -380,16 +430,22 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
             }`}
             key={s.key}
             onDragOver={(e) => {
-              if (s.groupId !== null && dragGroupId && dragGroupId !== s.groupId) {
+              const canDrop =
+                dragItemId ||
+                (s.groupId !== null && dragGroupId && dragGroupId !== s.groupId);
+              if (canDrop) {
                 e.preventDefault();
                 setDragOverGroupId(s.groupId as string);
               }
             }}
             onDrop={(e) => {
               e.preventDefault();
-              if (s.groupId !== null && dragGroupId) {
+              if (dragItemId) {
+                moveItemToGroup(dragItemId, s.groupId);
+              } else if (s.groupId !== null && dragGroupId) {
                 moveGroup(dragGroupId, s.groupId as string);
               }
+              setDragItemId(null);
               setDragGroupId(null);
               setDragOverGroupId(null);
             }}
@@ -481,14 +537,25 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
               <div className="wb-grid">
                 {s.items.map((it) => (
                   <div
-                    className={`wb-card${selectedIdx === (idxOf.get(it.id) ?? -1) ? " selected" : ""}`}
+                    className={`wb-card${selectedIdx === (idxOf.get(it.id) ?? -1) ? " selected" : ""}${
+                      dragItemId === it.id ? " dragging" : ""
+                    }`}
                     key={it.id}
                     ref={(el) => {
                       if (el) cardRefs.current.set(it.id, el);
                       else cardRefs.current.delete(it.id);
                     }}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragItemId(it.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => {
+                      setDragItemId(null);
+                      setDragOverGroupId(null);
+                    }}
                     onClick={() => openItem(it)}
-                    title={`打开 ${it.name}`}
+                    title={`打开 ${it.name}（拖拽可移动分组）`}
                   >
                     <div className={`wb-icon kind-${it.kind}`}>
                       {it.icon || KIND_ICONS[it.kind]}
@@ -526,9 +593,10 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
         );
       })}
 
-      {query.trim() && flat.length === 0 && (
+      {(query.trim() || kindFilter) && flat.length === 0 && (
         <div className="wb-no-results">
-          没有匹配「{query.trim()}」的跳转项
+          没有匹配{kindFilter ? `「${KIND_LABELS[kindFilter]}」类型` : ""}
+          {query.trim() ? `「${query.trim()}」` : ""}的跳转项
         </div>
       )}
 

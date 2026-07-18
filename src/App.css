@@ -1558,6 +1558,35 @@ body {
   font-size: var(--fs-caption);
   color: var(--text-3);
 }
+/* 类型筛选 chips（与搜索词取交集） */
+.wb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 4px;
+}
+.wb-chip {
+  appearance: none;
+  border: 1px solid transparent;
+  background: var(--hover);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+.wb-chip:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+.wb-chip.active {
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 500;
+}
 .wb-no-results {
   padding: 44px 0;
   text-align: center;
@@ -1823,6 +1852,9 @@ body {
 }
 :root[data-theme="dark"] .wb-card.selected {
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-md);
+}
+.wb-card.dragging {
+  opacity: 0.45;
 }
 .wb-icon {
   width: 52px;

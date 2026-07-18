@@ -92,9 +92,10 @@ export default function Sidebar({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                <line x1="12" y1="22.08" x2="12" y2="12" />
+                {/* inbox / 收集箱字形：开口盒 + 翻盖 */}
+                <path d="M5 10h14a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1v-7a1 1 0 011-1z" />
+                <path d="M5 10l7-5 7 5" />
+                <line x1="12" y1="5" x2="12" y2="10" />
               </svg>
             </button>
             <div className="brand-text">

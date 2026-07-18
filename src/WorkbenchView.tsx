@@ -205,8 +205,8 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
     const count = data.items.filter((i) => i.group_id === id).length;
     const msg =
       count > 0
-        ? `删除分组「${name}」？其下的 ${count} 个项目会移到「未分组」（不会被删除）。`
-        : `删除分组「${name}」？`;
+        ? `删除工作区「${name}」？其下的 ${count} 个项目会移到「默认工作区」（不会被删除）。`
+        : `删除工作区「${name}」？`;
     if (!confirm(msg)) return;
     try {
       const groups = data.groups.filter((g) => g.id !== id);
@@ -300,7 +300,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
       title: g.name,
       items: data.items.filter((i) => i.group_id === g.id),
     })),
-    { key: "__ungrouped", groupId: null, title: "未分组", items: ungrouped },
+    { key: "__ungrouped", groupId: null, title: "默认工作区", items: ungrouped },
   ];
 
   // ===== 类型筛选（按 launcher 类型收窄，与分组并列） =====
@@ -614,12 +614,12 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
 
               {/* 分组：单行智能输入（选已有 或 输入新名） */}
               <label className="wb-field">
-                <span className="wb-label">分组</span>
+                <span className="wb-label">工作区</span>
                 <div className="wb-group-row">
                   {data.groups.length > 0 ? (
                     <>
                       <select value={fGroup} onChange={(e) => setFGroup(e.target.value)} className="wb-group-select">
-                        <option value="">未分组</option>
+                        <option value="">默认工作区</option>
                         {data.groups.map((g) => (
                           <option key={g.id} value={g.id}>{g.name}</option>
                         ))}
@@ -630,7 +630,7 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
                   <input
                     value={fNewGroup}
                     onChange={(e) => setFNewGroup(e.target.value)}
-                    placeholder={data.groups.length > 0 ? "新建分组名…" : "分组名…"}
+                    placeholder={data.groups.length > 0 ? "新工作区名…" : "工作区名…"}
                     className={data.groups.length > 0 ? "wb-group-new" : ""}
                   />
                 </div>

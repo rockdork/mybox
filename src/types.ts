@@ -1,5 +1,6 @@
 export type ItemType = "note" | "task";
 export type ItemStatus = "open" | "done" | "archived";
+export type ItemPriority = "high" | "normal" | "low";
 
 export interface InboxItem {
   id: string;
@@ -9,6 +10,11 @@ export interface InboxItem {
   status: ItemStatus;
   source: string;
   obsidian_ref: string | null;
+  // —— v3 各自特色字段 ——
+  due_date: number | null; // 任务截止日（unix ms），笔记为 null
+  priority: ItemPriority; // 任务优先级
+  pinned: boolean; // 笔记置顶
+  tags: string; // 笔记标签，逗号分隔
   created_at: number;
   updated_at: number;
 }

@@ -3,6 +3,7 @@ import type {
   InboxItem,
   ItemType,
   ItemStatus,
+  ItemPriority,
   WorkbenchData,
   LauncherKind,
 } from "./types";
@@ -13,13 +14,21 @@ export function createItem(
   title: string,
   content = "",
   item_type: ItemType = "note",
-  source = "desktop"
+  source = "desktop",
+  due_date: number | null = null,
+  priority: ItemPriority = "normal",
+  pinned = false,
+  tags = ""
 ): Promise<InboxItem> {
   return invoke<InboxItem>("create_inbox_item", {
     title,
     content,
     itemType: item_type,
     source,
+    dueDate: due_date,
+    priority,
+    pinned,
+    tags,
   });
 }
 
@@ -32,7 +41,11 @@ export function updateItem(
   title: string,
   content: string,
   status: ItemStatus,
-  item_type: ItemType
+  item_type: ItemType,
+  due_date: number | null = null,
+  priority: ItemPriority = "normal",
+  pinned = false,
+  tags = ""
 ): Promise<InboxItem> {
   return invoke<InboxItem>("update_inbox_item", {
     id,
@@ -40,6 +53,10 @@ export function updateItem(
     content,
     status,
     itemType: item_type,
+    dueDate: due_date,
+    priority,
+    pinned,
+    tags,
   });
 }
 

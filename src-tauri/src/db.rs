@@ -18,6 +18,11 @@ pub struct InboxItem {
     pub status: String, // open | done | archived
     pub source: String, // desktop | mobile
     pub obsidian_ref: Option<String>, // 预留：M2 关联 Obsidian 笔记
+    // —— v3 新增：任务/笔记各自特色字段 ——
+    pub due_date: Option<i64>, // 任务截止日（unix ms），笔记为 NULL
+    pub priority: String,     // 任务优先级 high | normal | low
+    pub pinned: bool,         // 笔记置顶
+    pub tags: String,         // 笔记标签，逗号分隔
     pub created_at: i64, // unix ms
     pub updated_at: i64, // unix ms
 }
@@ -32,6 +37,11 @@ pub fn now_ms() -> i64 {
 
 pub const VALID_TYPES: &[&str] = &["note", "task"];
 pub const VALID_STATUS: &[&str] = &["open", "done", "archived"];
+pub const VALID_PRIORITY: &[&str] = &["high", "normal", "low"];
+
+pub fn validate_priority(p: &str) -> Result<(), AppError> {
+    validate_value(p, VALID_PRIORITY, "优先级")
+}
 
 fn validate_value(value: &str, allowed: &[&str], field: &str) -> Result<(), AppError> {
     if allowed.contains(&value) {
@@ -51,7 +61,7 @@ pub fn validate_status(s: &str) -> Result<(), AppError> {
 
 /// 所有 SELECT 统一的列顺序，必须与 item_mapper 的索引一一对应
 pub const SELECT_COLS: &str =
-    "id, item_type, title, content, status, source, obsidian_ref, created_at, updated_at";
+    "id, item_type, title, content, status, source, obsidian_ref, due_date, priority, pinned, tags, created_at, updated_at";
 
 /// 将一行 ResultSet 映射为 InboxItem
 pub fn item_mapper(row: &rusqlite::Row) -> Result<InboxItem, rusqlite::Error> {
@@ -63,8 +73,12 @@ pub fn item_mapper(row: &rusqlite::Row) -> Result<InboxItem, rusqlite::Error> {
         status: row.get(4)?,
         source: row.get(5)?,
         obsidian_ref: row.get(6)?,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        due_date: row.get(7)?,
+        priority: row.get(8)?,
+        pinned: row.get(9)?,
+        tags: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
@@ -84,7 +98,26 @@ pub fn log_change(
     Ok(())
 }
 
-const TARGET_VERSION: i64 = 2;
+const TARGET_VERSION: i64 = 3;
+
+/// 幂等加列：SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，先查 PRAGMA 再决定。
+fn add_column_if_missing(
+    conn: &Connection,
+    col: &str,
+    definition: &str,
+) -> Result<(), AppError> {
+    let exists = conn
+        .prepare("PRAGMA table_info(inbox_items)")?
+        .query_map([], |r| r.get::<usize, String>(1))?
+        .any(|c| c.map(|name| name == col).unwrap_or(false));
+    if !exists {
+        conn.execute(
+            &format!("ALTER TABLE inbox_items ADD COLUMN {} {}", col, definition),
+            [],
+        )?;
+    }
+    Ok(())
+}
 
 /// 幂等迁移。对已有数据库（M1 早期版本无 schema_version）安全：
 /// 建表用 IF NOT EXISTS，再补登记版本号，最后开启 WAL。
@@ -125,6 +158,14 @@ pub fn migrate(conn: &Connection) -> Result<(), AppError> {
                 "UPDATE inbox_items SET item_type = 'note' WHERE item_type IN ('inbox', 'lightnote')",
                 [],
             )?;
+        }
+
+        // v3 数据迁移：新增任务/笔记各自特色字段（幂等，老库自动补齐）
+        if version < 3 {
+            add_column_if_missing(conn, "due_date", "INTEGER")?; // 可空
+            add_column_if_missing(conn, "priority", "TEXT NOT NULL DEFAULT 'normal'")?;
+            add_column_if_missing(conn, "pinned", "INTEGER NOT NULL DEFAULT 0")?;
+            add_column_if_missing(conn, "tags", "TEXT NOT NULL DEFAULT ''")?;
         }
 
         if version == 0 {

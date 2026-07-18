@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   createItem,
   listItems,
   updateItem,
   deleteItem,
-  processItem,
   getSettings,
   setDataDir,
   openDataDir,
-  getWorkbench,
-  saveWorkbench,
-  openLauncher,
   getSyncStatus,
   setSyncDir,
   disableSync,
@@ -24,11 +22,11 @@ import type {
   InboxItem,
   ItemType,
   ItemStatus,
-  LauncherItem,
-  LauncherKind,
-  LauncherGroup,
-  WorkbenchData,
+  ItemPriority,
 } from "./types";
+import WorkbenchView from "./WorkbenchView";
+import Sidebar, { type View } from "./Sidebar";
+import { ErrorBanner } from "./ErrorBanner";
 import CalendarPanel from "./CalendarPanel";
 import "./App.css";
 
@@ -47,6 +45,75 @@ function fmtTime(ts: number): string {
     return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   }
   return d.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+// yyyy-mm-dd（本地）↔ unix ms
+function toDateInput(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+// 任务截止日徽标：逾期 / 今日 / 明日 / M月D日 周X
+function fmtDue(ms: number | null): string {
+  if (ms == null) return "无截止";
+  const d = new Date(ms);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (d < today) return "逾期";
+  if (d >= today && d < tomorrow) return "今日";
+  if (d >= tomorrow && d < new Date(today.getTime() + 86400000 * 2)) return "明日";
+  const wds = ["日", "一", "二", "三", "四", "五", "六"];
+  return `${d.getMonth() + 1}/${d.getDate()} 周${wds[d.getDay()]}`;
+}
+
+// 是否逾期（截止日 < 今天 00:00）
+function dueOverdue(ms: number): boolean {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return ms < today;
+}
+
+/* ── 任务时间分组（逾期 / 今日 / 明日 / 7天内 / 更远 / 已完成）── */
+const TASK_GROUPS = [
+  { key: "overdue", label: "逾期" },
+  { key: "today", label: "今日" },
+  { key: "tomorrow", label: "明日" },
+  { key: "week", label: "7 天内" },
+  { key: "later", label: "更远" },
+  { key: "done", label: "已完成" },
+] as const;
+
+type TaskGroupKey = (typeof TASK_GROUPS)[number]["key"];
+
+function getTaskGroupKey(due: number | null, status: ItemStatus): TaskGroupKey {
+  if (status === "done") return "done";
+  if (due == null) return "later"; // 无截止日 → 更远
+
+  const d = new Date(due);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const weekEnd = new Date(today.getTime() + 86400000 * 7);
+
+  if (d < today) return "overdue";
+  if (d >= today && d < tomorrow) return "today";
+  if (d >= tomorrow && d < weekEnd) return "week";
+  return "later";
+}
+
+function groupTasksByTime(items: InboxItem[]) {
+  const groups: Partial<Record<TaskGroupKey, InboxItem[]>> = {};
+  for (const g of TASK_GROUPS) groups[g.key] = [];
+  for (const it of items) {
+    const k = getTaskGroupKey(it.due_date, it.status);
+    (groups[k] ??= []).push(it);
+  }
+  // 仅显示非空分组
+  return TASK_GROUPS.filter((g) => (groups[g.key]?.length ?? 0) > 0).map((g) => ({
+    ...g,
+    items: groups[g.key] ?? [],
+  }));
 }
 
 const Ico = ({ d }: { d: string }) => (
@@ -77,24 +144,33 @@ const CheckMark = ({ white = false }: { white?: boolean }) => (
   </svg>
 );
 
-const NAV: { key: Filter; label: string; d: string }[] = [
-  {
-    key: "note",
-    label: "笔记",
-    d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
-  },
-  {
-    key: "task",
-    label: "任务",
-    d: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
-  },
-];
+const PinIco = () => (
+  <svg
+    className="ico pin-ico"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="none"
+  >
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const TRASH =
+  "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6";
+const STAR =
+  "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
 
 function App() {
   const [allItems, setAllItems] = useState<InboxItem[]>([]);
   const [filter, setFilter] = useState<Filter>("note");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  // 任务快捷添加的状态
+  const [taskDue, setTaskDue] = useState("");
+  const [taskPriority, setTaskPriority] = useState<ItemPriority>("normal");
+  // 笔记快捷添加的状态
+  const [notePinned, setNotePinned] = useState(false);
+  const [noteTags, setNoteTags] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -103,12 +179,17 @@ function App() {
   const [editContent, setEditContent] = useState("");
   const [editStatus, setEditStatus] = useState<ItemStatus>("open");
   const [editType, setEditType] = useState<ItemType>("note");
+  const [editDue, setEditDue] = useState("");
+  const [editPriority, setEditPriority] = useState<ItemPriority>("normal");
+  const [editPinned, setEditPinned] = useState(false);
+  const [editTags, setEditTags] = useState("");
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [moving, setMoving] = useState(false);
-  const [view, setView] = useState<"main" | "workbench" | "settings">("main");
+  const [view, setView] = useState<View>("main");
   const [collapsed, setCollapsed] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [taskCollapsed, setTaskCollapsed] = useState<Record<string, boolean>>({});
 
   // 同步状态 + 跨设备刷新计数（供工作台监听自动重载）
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -135,6 +216,67 @@ function App() {
     localStorage.setItem("mybox-theme", t);
     setTheme(t);
   };
+
+  // ===== 应用内更新检查（GitHub Releases，无需 Apple 签名）=====
+  const GITHUB_REPO = "rockdork/mybox";
+  const [appVersion, setAppVersion] = useState("0.1.0");
+  const appVersionRef = useRef("0.1.0");
+  const [updateInfo, setUpdateInfo] = useState<{
+    status: "idle" | "checking" | "latest" | "available" | "error";
+    latest?: string;
+    url?: string;
+    publishedAt?: string;
+    error?: string;
+  }>({ status: "idle" });
+
+  // 语义化版本比较：a>b 返回 1，相等 0，a<b -1
+  const compareVer = (a: string, b: string): number => {
+    const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+    const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+      if (d !== 0) return d;
+    }
+    return 0;
+  };
+
+  const checkUpdate = async () => {
+    setUpdateInfo((p) => ({ ...p, status: "checking" }));
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+        { headers: { Accept: "application/vnd.github+json" } },
+      );
+      if (!res.ok) throw new Error(`GitHub 返回 ${res.status}`);
+      const data = await res.json();
+      const latest = String(data.tag_name ?? "").replace(/^v/i, "");
+      const cur = appVersionRef.current.replace(/^v/i, "");
+      const isNewer = latest !== "" && compareVer(latest, cur) > 0;
+      setUpdateInfo({
+        status: isNewer ? "available" : "latest",
+        latest,
+        url:
+          data.html_url ?? `https://github.com/${GITHUB_REPO}/releases`,
+        publishedAt: data.published_at,
+      });
+    } catch (e) {
+      setUpdateInfo({ status: "error", error: String(e) });
+    }
+  };
+
+  // 启动后读取真实版本号并自动检查一次更新
+  useEffect(() => {
+    getVersion()
+      .then((v) => {
+        appVersionRef.current = v;
+        setAppVersion(v);
+      })
+      .catch(() => {})
+      .finally(() => {
+        checkUpdate();
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 窗口宽度变窄到阈值以下时自动收起侧栏（仅自动收起，不强制展开，尊重用户手动操作）
   const AUTO_COLLAPSE_WIDTH = 560;
@@ -178,6 +320,7 @@ function App() {
   };
 
   const titleRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -271,7 +414,12 @@ function App() {
   };
 
   const visible = useMemo(() => {
-    return allItems.filter((i) => i.item_type === filter);
+    const list = allItems.filter((i) => i.item_type === filter);
+    if (filter === "note") {
+      // 置顶项排在最前，其余保持原顺序
+      return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+    }
+    return list;
   }, [allItems, filter]);
 
   const counts = useMemo(() => {
@@ -293,17 +441,37 @@ function App() {
   };
 
   const add = () => {
-    const t = title.trim();
-    if (!t) {
-      titleRef.current?.focus();
-      return;
+    if (filter === "task") {
+      const t = title.trim();
+      if (!t) {
+        titleRef.current?.focus();
+        return;
+      }
+      mutate(async () => {
+        const due = taskDue ? new Date(taskDue + "T23:59:59").getTime() : null;
+        await createItem(t, content.trim(), "task", "desktop", due, taskPriority, false, "");
+        setTitle("");
+        setContent("");
+        setTaskDue("");
+        setTaskPriority("normal");
+        titleRef.current?.focus();
+      });
+    } else {
+      const t = title.trim();
+      const c = content.trim();
+      if (!t && !c) {
+        contentRef.current?.focus();
+        return;
+      }
+      mutate(async () => {
+        await createItem(t, c, "note", "desktop", null, "normal", notePinned, noteTags);
+        setTitle("");
+        setContent("");
+        setNotePinned(false);
+        setNoteTags("");
+        contentRef.current?.focus();
+      });
     }
-    mutate(async () => {
-      await createItem(t, content.trim());
-      setTitle("");
-      setContent("");
-      titleRef.current?.focus();
-    });
   };
 
   const remove = (id: string) => {
@@ -311,13 +479,13 @@ function App() {
     mutate(() => deleteItem(id));
   };
 
-  const process = (id: string, target: ItemType) => {
-    mutate(() => processItem(id, target));
-  };
+
 
   const toggleStatus = (it: InboxItem) => {
     const next: ItemStatus = it.status === "done" ? "open" : "done";
-    mutate(() => updateItem(it.id, it.title, it.content, next, it.item_type));
+    mutate(() =>
+      updateItem(it.id, it.title, it.content, next, it.item_type, it.due_date, it.priority, it.pinned, it.tags)
+    );
   };
 
   const startEdit = (it: InboxItem) => {
@@ -326,11 +494,26 @@ function App() {
     setEditContent(it.content);
     setEditStatus(it.status);
     setEditType(it.item_type);
+    setEditDue(it.due_date ? toDateInput(it.due_date) : "");
+    setEditPriority(it.priority);
+    setEditPinned(it.pinned);
+    setEditTags(it.tags);
   };
 
   const saveEdit = (id: string) => {
     mutate(async () => {
-      await updateItem(id, editTitle.trim(), editContent.trim(), editStatus, editType);
+      const due = editDue ? new Date(editDue + "T23:59:59").getTime() : null;
+      await updateItem(
+        id,
+        editTitle.trim(),
+        editContent.trim(),
+        editStatus,
+        editType,
+        due,
+        editPriority,
+        editPinned,
+        editTags,
+      );
       setEditingId(null);
     });
   };
@@ -455,6 +638,55 @@ function App() {
 
             <section className="settings-card">
               <div className="settings-card-head">
+                <div className="settings-card-title">更新</div>
+                <div className="settings-card-desc">
+                  自动检查 GitHub 上的新版本，发现后可一键前往下载。
+                </div>
+              </div>
+              <div className="settings-about-row">
+                <span>当前版本</span>
+                <span>v{appVersion}</span>
+              </div>
+              <div className="update-state">
+                {updateInfo.status === "checking" && (
+                  <span className="up-checking">检查中…</span>
+                )}
+                {updateInfo.status === "latest" && (
+                  <span className="up-ok">已是最新（v{updateInfo.latest}）</span>
+                )}
+                {updateInfo.status === "available" && (
+                  <span className="up-avail">
+                    发现新版本 v{updateInfo.latest}
+                    {updateInfo.publishedAt
+                      ? ` · ${new Date(updateInfo.publishedAt).toLocaleDateString("zh-CN")}`
+                      : ""}
+                  </span>
+                )}
+                {updateInfo.status === "error" && (
+                  <span className="up-err">检查失败：{updateInfo.error}</span>
+                )}
+              </div>
+              <div className="settings-actions">
+                <button
+                  className="btn sm"
+                  onClick={checkUpdate}
+                  disabled={updateInfo.status === "checking"}
+                >
+                  检查更新
+                </button>
+                {updateInfo.status === "available" && updateInfo.url && (
+                  <button
+                    className="btn sm primary"
+                    onClick={() => openUrl(updateInfo.url!)}
+                  >
+                    前往下载
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className="settings-card">
+              <div className="settings-card-head">
                 <div className="settings-card-title">关于</div>
               </div>
               <div className="settings-about">
@@ -464,7 +696,7 @@ function App() {
                 </div>
                 <div className="settings-about-row">
                   <span>版本</span>
-                  <span>0.1 · Mac 主库</span>
+                  <span>v{appVersion} · Mac 主库</span>
                 </div>
                 <div className="settings-about-row">
                   <span>模式</span>
@@ -476,134 +708,272 @@ function App() {
         </div>
       ) : (
         <>
-          <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
-        <div className="brand">
-          {!collapsed && (
-            <div className="brand-left">
-              <button
-                className="brand-mark"
-                title="mybox"
-              >
-                <CheckMark white />
-              </button>
-              <div className="brand-text">
-                <div className="brand-name">mybox</div>
+          <Sidebar
+            collapsed={collapsed}
+            view={view}
+            filter={filter}
+            counts={counts}
+            showAddMenu={showAddMenu}
+            setShowAddMenu={setShowAddMenu}
+            onToggleSidebar={toggleSidebar}
+            onNavClick={(f) => { setView("main"); setFilter(f); }}
+            onWorkbenchClick={() => setView("workbench")}
+            onSettingsClick={() => setView("settings")}
+            onAddNote={() => { setView("main"); setFilter("note"); setTimeout(() => titleRef.current?.focus(), 0); }}
+            onAddTask={() => { setView("main"); setFilter("task"); setTimeout(() => titleRef.current?.focus(), 0); }}
+          />
+
+          <main className={`main${filter === "task" && view === "main" ? " task-main" : ""}`}>
+            {view === "workbench" ? (
+              <WorkbenchView allItems={allItems} syncTick={syncTick} />
+            ) : filter === "task" ? (
+              <div className="task-layout">
+                <div className="task-list-pane">
+                  <div className="quick-add task-quick">
+                    <span className="qa-plus"><Ico d="M12 5v14M5 12h14" /></span>
+                    <input
+                      ref={titleRef}
+                      className="qa-input"
+                      placeholder="添加一个任务…"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+                    />
+                    <div className="qa-extra">
+                      <input
+                        type="date"
+                        className="qa-date"
+                        value={taskDue}
+                        onChange={(e) => setTaskDue(e.target.value)}
+                        title="截止日期"
+                      />
+                      <select
+                        className="qa-pri"
+                        value={taskPriority}
+                        onChange={(e) => setTaskPriority(e.target.value as ItemPriority)}
+                        title="优先级"
+                      >
+                        <option value="high">高</option>
+                        <option value="normal">中</option>
+                        <option value="low">低</option>
+                      </select>
+                      <button className="qa-btn" onClick={add}>添加</button>
+                    </div>
+                  </div>
+
+                  <ErrorBanner msg={error} onClose={() => setError("")} />
+
+                  {loading && <div className="empty">加载中…</div>}
+                  {!loading && visible.length === 0 && (
+                    <div className="empty">还没有任务，先在上面添加一条吧。</div>
+                  )}
+
+                  {!loading && groupTasksByTime(visible).map((grp) => {
+                    const isCollapsed =
+                      grp.key === "done"
+                        ? taskCollapsed[grp.key] !== false
+                        : !!taskCollapsed[grp.key];
+                    return (
+                      <div className={`tg-section${isCollapsed ? " collapsed" : ""}`} key={grp.key} data-g={grp.key}>
+                        <div
+                          className="tg-head"
+                          onClick={() => setTaskCollapsed((p) => ({ ...p, [grp.key]: !p[grp.key] }))}
+                        >
+                          <span className="tg-dot" />
+                          <span className="tg-title">{grp.label}</span>
+                          <span className="tg-count">{grp.items.length}</span>
+                          <button
+                            className="tg-chevron"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTaskCollapsed((p) => ({ ...p, [grp.key]: !p[grp.key] }));
+                            }}
+                          >
+                            <Ico d="M9 6l6 6-6 6" />
+                          </button>
+                        </div>
+                        {!isCollapsed && (
+                          <div className="tg-body">
+                            {grp.items.map((it) =>
+                              editingId === it.id ? (
+                                <div className="row editing" key={it.id}>
+                                  <input
+                                    className="edit-title"
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    placeholder="标题（可选）"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") setEditingId(null);
+                                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") saveEdit(it.id);
+                                    }}
+                                  />
+                                  <textarea
+                                    className="edit-content"
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    rows={3}
+                                    placeholder="写点什么…"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") { e.preventDefault(); setEditingId(null); }
+                                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") saveEdit(it.id);
+                                    }}
+                                  />
+                                  <div className="edit-extra">
+                                    {editType === "task" && (
+                                      <>
+                                        <label className="edit-field">
+                                          <span>截止</span>
+                                          <input
+                                            type="date"
+                                            value={editDue}
+                                            onChange={(e) => setEditDue(e.target.value)}
+                                          />
+                                        </label>
+                                        <label className="edit-field">
+                                          <span>优先级</span>
+                                          <select
+                                            value={editPriority}
+                                            onChange={(e) => setEditPriority(e.target.value as ItemPriority)}
+                                          >
+                                            <option value="high">高</option>
+                                            <option value="normal">中</option>
+                                            <option value="low">低</option>
+                                          </select>
+                                        </label>
+                                      </>
+                                    )}
+                                    {editType === "note" && (
+                                      <>
+                                        <input
+                                          className="edit-tags"
+                                          placeholder="标签"
+                                          value={editTags}
+                                          onChange={(e) => setEditTags(e.target.value)}
+                                        />
+                                        <label className="edit-pin">
+                                          <input
+                                            type="checkbox"
+                                            checked={editPinned}
+                                            onChange={(e) => setEditPinned(e.target.checked)}
+                                          />
+                                          <span>置顶</span>
+                                        </label>
+                                      </>
+                                    )}
+                                  </div>
+                                  <div className="edit-row">
+                                    <span className="edit-hint">⌘↵ 保存 · Esc 取消</span>
+                                    <div className="edit-row-right">
+                                      <button
+                                        className="icon-btn danger"
+                                        onClick={() => { setEditingId(null); remove(it.id); }}
+                                        title="删除"
+                                        aria-label="删除"
+                                      >
+                                        <Ico d={TRASH} />
+                                      </button>
+                                      <button className="btn primary" onClick={() => saveEdit(it.id)}>完成</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className={`task-row status-${it.status}`}
+                                  key={it.id}
+                                  onDoubleClick={() => startEdit(it)}
+                                >
+                                  <button
+                                    className="check"
+                                    onClick={() => toggleStatus(it)}
+                                    aria-label="切换完成"
+                                  >
+                                    {it.status === "done" && <CheckMark white />}
+                                  </button>
+
+                                  <div className="task-body">
+                                    <div className="task-top">
+                                      <span className="task-name">{it.title}</span>
+                                      {it.priority === "high" && (
+                                        <span className="tag pri-high"><Ico d={STAR} /> 高</span>
+                                      )}
+                                      {it.priority === "low" && (
+                                        <span className="tag pri-low">低</span>
+                                      )}
+                                      {it.source === "mobile" && (
+                                        <span className="tag src">手机</span>
+                                      )}
+                                      {it.status !== "open" && (
+                                        <span className="tag st">{STATUS_LABELS[it.status]}</span>
+                                      )}
+                                    </div>
+                                    {it.content && <div className="task-desc">{it.content}</div>}
+                                  </div>
+
+                                  <div className="task-meta">
+                                    {it.due_date ? (
+                                      <span className={`task-time${dueOverdue(it.due_date) ? " overdue" : ""}`}>{fmtDue(it.due_date)}</span>
+                                    ) : (
+                                      <span className="task-time muted">{fmtTime(it.created_at)}</span>
+                                    )}
+                                    <div className="task-acts">
+                                      <button
+                                        className="icon-btn danger"
+                                        onClick={() => remove(it.id)}
+                                        title="删除"
+                                        aria-label="删除"
+                                      >
+                                        <Ico d={TRASH} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="task-cal-pane">
+                  <CalendarPanel tasks={allItems} />
+                </div>
               </div>
-            </div>
-          )}
-          <button
-            className="brand-toggle"
-            onClick={toggleSidebar}
-            title={collapsed ? "展开侧栏" : "收起侧栏"}
-            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-          >
-            <Ico d="M3 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 6v12" />
-          </button>
-        </div>
 
-        <nav className="nav">
-          <div className="sidebar-add">
-            <button
-              className="btn primary add-btn"
-              onClick={() => setShowAddMenu((v) => !v)}
-              onBlur={() => setTimeout(() => setShowAddMenu(false), 150)}
-            >
-              <Ico d="M12 5v14M5 12h14" />
-              <span className="add-label">添加</span>
-            </button>
-            {showAddMenu && (
-              <div className="add-menu">
-                <button
-                  className="add-opt"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setShowAddMenu(false);
-                    setView("main");
-                    setFilter("note");
-                    setTimeout(() => titleRef.current?.focus(), 0);
-                  }}
-                >
-                  <Ico d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-                  添加笔记
-                </button>
-                <button
-                  className="add-opt"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setShowAddMenu(false);
-                    setView("main");
-                    setFilter("task");
-                    setTimeout(() => titleRef.current?.focus(), 0);
-                  }}
-                >
-                  <Ico d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-                  添加任务
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button
-            className={`nav-item ${view === "workbench" ? "active" : ""}`}
-            onClick={() => setView("workbench")}
-            title="工作台"
-          >
-            <Ico d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-            <span className="nav-label">工作台</span>
-          </button>
-          {NAV.map((f) => (
-            <button
-              key={f.key}
-              className={`nav-item ${filter === f.key && view === "main" ? "active" : ""}`}
-              onClick={() => { setView("main"); setFilter(f.key); }}
-              title={f.label}
-            >
-              <Ico d={f.d} />
-              <span className="nav-label">{f.label}</span>
-              <span className="nav-count">{counts[f.key]}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <button className="settings-btn" onClick={() => setView("settings")}>
-            <Ico d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.91L3.27 8.04a2 2 0 0 0 .9 2.73l.15.09a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.9 2.73l.73 1.29a2 2 0 0 0 2.73.9l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.9l.73-1.29a2 2 0 0 0-.9-2.73l-.15-.09a2 2 0 0 1-1-1.74V12.6a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .9-2.73l-.73-1.29a2 2 0 0 0-2.73-.9l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
-            <span>设置</span>
-          </button>
-        </div>
-
-        <div className="sidebar-foot">v0.1 · Mac 主库</div>
-      </aside>
-
-      <main className="main">
-        {view === "workbench" ? (
-          <WorkbenchView allItems={allItems} syncTick={syncTick} />
         ) : (
         <>
-        <div className="quick-add">
-          <span className="qa-plus">
-            <Ico d="M12 5v14M5 12h14" />
-          </span>
-          <input
-            ref={titleRef}
-            className="qa-input"
-            placeholder="添加一个想法、任务或灵感…"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+        <div className="note-quick">
+          <textarea
+            ref={contentRef}
+            className="nq-input"
+            placeholder="写一条笔记…（⌘↵ 添加）"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") add();
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") add();
             }}
           />
-          <button className="qa-btn" onClick={add}>
-            添加
-          </button>
+          <div className="nq-row">
+            <input
+              className="nq-tags"
+              placeholder="标签，用空格分隔"
+              value={noteTags}
+              onChange={(e) => setNoteTags(e.target.value)}
+            />
+            <label className="nq-pin">
+              <input
+                type="checkbox"
+                checked={notePinned}
+                onChange={(e) => setNotePinned(e.target.checked)}
+              />
+              <span>置顶</span>
+            </label>
+            <button className="qa-btn" onClick={add}>添加</button>
+          </div>
         </div>
 
-        {error && (
-          <div className="error" onClick={() => setError("")}>
-            {error}（点击关闭）
-          </div>
-        )}
+        <ErrorBanner msg={error} onClose={() => setError("")} />
 
         <div className="list">
           {loading && <div className="empty">加载中…</div>}
@@ -648,83 +1018,38 @@ function App() {
                         title="删除"
                         aria-label="删除"
                       >
-                        <Ico d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                        <Ico d={TRASH} />
                       </button>
                       <button className="btn primary" onClick={() => saveEdit(it.id)}>完成</button>
                     </div>
                   </div>
                 </div>
               ) : it.item_type === "note" ? (
-                <div className="note-card" key={it.id} onDoubleClick={() => startEdit(it)}>
+                <div className={`note-card${it.pinned ? " pinned" : ""}`} key={it.id} onDoubleClick={() => startEdit(it)}>
                   <div className="note-body">
+                    {it.pinned && <span className="note-pin"><PinIco /></span>}
                     {it.title && <div className="note-title">{it.title}</div>}
                     {it.content && <div className="note-text">{it.content}</div>}
                   </div>
                   <div className="note-foot">
+                    {it.tags && <span className="tag note-tag">{it.tags}</span>}
                     {it.source === "mobile" && (
                       <span className="tag source">手机</span>
                     )}
                     <span className="tag time">{fmtTime(it.created_at)}</span>
                     <div className="row-actions">
-                      <button className="act" onClick={() => process(it.id, "task")}>
-                        → 任务
-                      </button>
                       <button
                         className="icon-btn danger"
                         onClick={() => remove(it.id)}
                         title="删除"
                         aria-label="删除"
                       >
-                        <Ico d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                        <Ico d={TRASH} />
                       </button>
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div
-                  className={`task-row status-${it.status}`}
-                  key={it.id}
-                  onDoubleClick={() => startEdit(it)}
-                >
-                  <button
-                    className="check"
-                    onClick={() => toggleStatus(it)}
-                    aria-label="切换完成"
-                  >
-                    {it.status === "done" && <CheckMark white />}
-                  </button>
-
-                  <div className="task-main">
-                    <div className="task-title">
-                      {it.title}
-                      {it.content && <span className="task-sub">{it.content}</span>}
-                    </div>
-                    <div className="task-tags">
-                      {it.status !== "open" && (
-                        <span className="tag status">{STATUS_LABELS[it.status]}</span>
-                      )}
-                      {it.source === "mobile" && (
-                        <span className="tag source">手机</span>
-                      )}
-                      <span className="tag time">{fmtTime(it.created_at)}</span>
-                    </div>
-                  </div>
-
-                  <div className="row-actions">
-                    <button className="act" onClick={() => process(it.id, "note")}>
-                      → 笔记
-                    </button>
-                    <button
-                      className="icon-btn danger"
-                      onClick={() => remove(it.id)}
-                      title="删除"
-                      aria-label="删除"
-                    >
-                      <Ico d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                    </button>
-                  </div>
-                </div>
-              )
+              ) : null
             )}
         </div>
         </>
@@ -736,519 +1061,3 @@ function App() {
 }
 
 export default App;
-
-// ===== 工作台（启动器）=====
-const KIND_ICONS: Record<LauncherKind, string> = {
-  web: "🌐",
-  obsidian: "📓",
-  app: "📦",
-  folder: "📁",
-};
-
-function placeholderFor(kind: LauncherKind): string {
-  switch (kind) {
-    case "web":
-      return "https://example.com";
-    case "obsidian":
-      return "vault 名称（如 MyVault）";
-    case "app":
-      return "/Applications/X.app 或 应用名";
-    case "folder":
-      return "/path/to/folder";
-  }
-}
-
-function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick: number }) {
-  const [data, setData] = useState<WorkbenchData>({ groups: [], items: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [fName, setFName] = useState("");
-  const [fKind, setFKind] = useState<LauncherKind>("web");
-  const [fTarget, setFTarget] = useState("");
-  const [fIcon, setFIcon] = useState("");
-  const [fGroup, setFGroup] = useState("");
-  const [fNewGroup, setFNewGroup] = useState("");
-
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [groupDraft, setGroupDraft] = useState("");
-
-  const [dragGroupId, setDragGroupId] = useState<string | null>(null);
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      setData(await getWorkbench());
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 跨设备同步到达（syncTick 变化）→ 重新拉取工作台配置
-  useEffect(() => {
-    if (syncTick > 0) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncTick]);
-
-  const persist = async (next: WorkbenchData) => {
-    await saveWorkbench(next);
-    setData(next);
-  };
-
-  const openItem = (it: LauncherItem) => {
-    openLauncher(it.kind, it.target).catch((e) => setError(String(e)));
-  };
-
-  const resetForm = () => {
-    setFName("");
-    setFTarget("");
-    setFIcon("");
-    setFGroup("");
-    setFNewGroup("");
-    setFKind("web");
-    setEditingId(null);
-  };
-
-  const openForm = (it?: LauncherItem) => {
-    if (it) {
-      setEditingId(it.id);
-      setFName(it.name);
-      setFKind(it.kind);
-      setFTarget(it.target);
-      setFIcon(it.icon);
-      setFGroup(it.group_id);
-    } else {
-      resetForm();
-    }
-    setShowForm(true);
-  };
-
-  const submit = async () => {
-    const name = fName.trim();
-    const target = fTarget.trim();
-    if (!name) {
-      setError("请填写名称");
-      return;
-    }
-    if (!target) {
-      setError("请填写目标（链接 / 路径 / vault 名）");
-      return;
-    }
-    let groups = [...data.groups];
-    let groupId = fGroup;
-    const ng = fNewGroup.trim();
-    if (ng) {
-      const g: LauncherGroup = { id: crypto.randomUUID(), name: ng };
-      groups.push(g);
-      groupId = g.id;
-    }
-    let items: LauncherItem[];
-    if (editingId) {
-      items = data.items.map((it) =>
-        it.id === editingId
-          ? { ...it, name, kind: fKind, target, icon: fIcon.trim(), group_id: groupId }
-          : it
-      );
-    } else {
-      const item: LauncherItem = {
-        id: crypto.randomUUID(),
-        name,
-        kind: fKind,
-        target,
-        icon: fIcon.trim(),
-        group_id: groupId,
-      };
-      items = [...data.items, item];
-    }
-    try {
-      await persist({ groups, items });
-      setShowForm(false);
-      resetForm();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const removeItem = async (id: string) => {
-    if (!confirm("确定删除这个工作台项？")) return;
-    try {
-      await persist({
-        groups: data.groups,
-        items: data.items.filter((i) => i.id !== id),
-      });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const removeGroup = async (id: string, name: string) => {
-    const count = data.items.filter((i) => i.group_id === id).length;
-    const msg =
-      count > 0
-        ? `删除分组「${name}」？其下的 ${count} 个项目会移到「未分组」（不会被删除）。`
-        : `删除分组「${name}」？`;
-    if (!confirm(msg)) return;
-    try {
-      const groups = data.groups.filter((g) => g.id !== id);
-      const items = data.items.map((i) =>
-        i.group_id === id ? { ...i, group_id: "" } : i
-      );
-      await persist({ groups, items });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const startRenameGroup = (g: LauncherGroup) => {
-    setEditingGroupId(g.id);
-    setGroupDraft(g.name);
-  };
-
-  const commitRenameGroup = async () => {
-    if (!editingGroupId) return;
-    const name = groupDraft.trim();
-    const groups = data.groups.map((g) =>
-      g.id === editingGroupId ? { ...g, name: name || g.name } : g
-    );
-    setEditingGroupId(null);
-    setGroupDraft("");
-    try {
-      await persist({ groups, items: data.items });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const toggleGroupCollapsed = async (id: string) => {
-    const groups = data.groups.map((g) =>
-      g.id === id ? { ...g, collapsed: !g.collapsed } : g
-    );
-    try {
-      await persist({ groups, items: data.items });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const moveGroup = async (fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    const groups = [...data.groups];
-    const fromIdx = groups.findIndex((g) => g.id === fromId);
-    const toIdx = groups.findIndex((g) => g.id === toId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = groups.splice(fromIdx, 1);
-    groups.splice(toIdx, 0, moved);
-    try {
-      await persist({ groups, items: data.items });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const ungrouped = data.items.filter(
-    (i) => !i.group_id || !data.groups.some((g) => g.id === i.group_id)
-  );
-  const sections = [
-    ...data.groups.map((g) => ({
-      key: g.id,
-      groupId: g.id,
-      title: g.name,
-      items: data.items.filter((i) => i.group_id === g.id),
-    })),
-    ...(ungrouped.length
-      ? [{ key: "__ungrouped", groupId: null, title: "未分组", items: ungrouped }]
-      : []),
-  ];
-
-  return (
-    <div className="wb-layout">
-      {/* 左侧：启动器分组 */}
-      <div className="wb-left">
-      <div className="wb">
-      <div className="wb-head">
-        <div className="wb-title">工作台</div>
-        <button className="btn primary" onClick={() => openForm()}>
-          ＋ 添加
-        </button>
-      </div>
-
-      {error && (
-        <div className="error" onClick={() => setError("")}>
-          {error}（点击关闭）
-        </div>
-      )}
-      {loading && <div className="empty">加载中…</div>}
-      {!loading && data.items.length === 0 && (
-        <div className="empty">
-          还没有工作台项，点右上角「添加」配置常用链接、应用或知识库。
-        </div>
-      )}
-
-      {sections.map((s) => {
-        if (s.groupId === null && s.items.length === 0) return null;
-        const grp =
-          s.groupId !== null
-            ? data.groups.find((g) => g.id === s.groupId)
-            : undefined;
-        const collapsed = grp ? !!grp.collapsed : false;
-        return (
-          <div
-            className={`wb-section${collapsed ? " collapsed" : ""}${
-              dragOverGroupId === s.groupId ? " drop-target" : ""
-            }`}
-            key={s.key}
-            onDragOver={(e) => {
-              if (s.groupId !== null && dragGroupId && dragGroupId !== s.groupId) {
-                e.preventDefault();
-                setDragOverGroupId(s.groupId as string);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (s.groupId !== null && dragGroupId) {
-                moveGroup(dragGroupId, s.groupId as string);
-              }
-              setDragGroupId(null);
-              setDragOverGroupId(null);
-            }}
-          >
-            <div className="wb-section-head">
-              {s.groupId !== null && (
-                <>
-                  <span
-                    className="wb-grip"
-                    title="拖拽排序"
-                    draggable
-                    onDragStart={(e) => {
-                      setDragGroupId(s.groupId as string);
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragEnd={() => {
-                      setDragGroupId(null);
-                      setDragOverGroupId(null);
-                    }}
-                  >
-                    <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="9" cy="6" r="1.3" /><circle cx="15" cy="6" r="1.3" />
-                      <circle cx="9" cy="12" r="1.3" /><circle cx="15" cy="12" r="1.3" />
-                      <circle cx="9" cy="18" r="1.3" /><circle cx="15" cy="18" r="1.3" />
-                    </svg>
-                  </span>
-                  <button
-                    className="wb-chevron"
-                    title={collapsed ? "展开" : "收起"}
-                    onClick={() => toggleGroupCollapsed(s.groupId as string)}
-                  >
-                    <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
-                  </button>
-                </>
-              )}
-              {editingGroupId === s.groupId ? (
-                <input
-                  className="wb-section-edit"
-                  value={groupDraft}
-                  autoFocus
-                  onChange={(e) => setGroupDraft(e.target.value)}
-                  onBlur={commitRenameGroup}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRenameGroup();
-                    if (e.key === "Escape") {
-                      setEditingGroupId(null);
-                      setGroupDraft("");
-                    }
-                  }}
-                />
-              ) : (
-                <div className="wb-section-title">
-                  {s.title}
-                  {s.groupId !== null && collapsed && s.items.length > 0 && (
-                    <span className="wb-count"> {s.items.length}</span>
-                  )}
-                </div>
-              )}
-              {s.groupId !== null && (
-                <div className="wb-section-actions">
-                  <button
-                    className="wb-sec-edit"
-                    title="重命名分组"
-                    onClick={() =>
-                      startRenameGroup({ id: s.groupId as string, name: s.title })
-                    }
-                  >
-                    <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5ZM15 5l4 4"/>
-                    </svg>
-                  </button>
-                  <button
-                    className="wb-sec-del"
-                    title="删除分组"
-                    onClick={() => removeGroup(s.groupId as string, s.title)}
-                  >
-                    <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-            {collapsed ? null : s.items.length === 0 ? (
-              <div className="wb-empty-group">空分组</div>
-            ) : (
-              <div className="wb-grid">
-                {s.items.map((it) => (
-                  <div
-                    className="wb-card"
-                    key={it.id}
-                    onDoubleClick={() => openItem(it)}
-                  >
-                    <button
-                      className={`wb-icon kind-${it.kind}`}
-                      onClick={() => openItem(it)}
-                      title={`打开 ${it.name}`}
-                    >
-                      {it.icon || KIND_ICONS[it.kind]}
-                    </button>
-                    <div className="wb-name" title={it.name}>
-                      {it.name}
-                    </div>
-                    <div className="wb-actions">
-                      <button
-                        className="wb-edit"
-                        onClick={() => openForm(it)}
-                        title="编辑"
-                      >
-                        <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5ZM15 5l4 4"/>
-                    </svg>
-                      </button>
-                      <button
-                        className="wb-del"
-                        onClick={() => removeItem(it.id)}
-                        title="删除"
-                      >
-                        <svg className="wb-ico" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {showForm && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            setShowForm(false);
-            resetForm();
-          }}
-        >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">
-              {editingId ? "编辑工作台项" : "添加工作台项"}
-            </div>
-            <label className="modal-field">
-              <span>名称</span>
-              <input
-                value={fName}
-                onChange={(e) => setFName(e.target.value)}
-                placeholder="如：GitHub"
-                autoFocus
-              />
-            </label>
-            <label className="modal-field">
-              <span>类型</span>
-              <select
-                value={fKind}
-                onChange={(e) => setFKind(e.target.value as LauncherKind)}
-              >
-                <option value="web">网页链接</option>
-                <option value="obsidian">Obsidian 知识库</option>
-                <option value="app">本地应用</option>
-                <option value="folder">文件夹</option>
-              </select>
-            </label>
-            <label className="modal-field">
-              <span>目标</span>
-              <input
-                value={fTarget}
-                onChange={(e) => setFTarget(e.target.value)}
-                placeholder={placeholderFor(fKind)}
-              />
-            </label>
-            <label className="modal-field">
-              <span>图标</span>
-              <input
-                value={fIcon}
-                onChange={(e) => setFIcon(e.target.value)}
-                placeholder="留空用默认 emoji"
-              />
-            </label>
-            <label className="modal-field">
-              <span>分组</span>
-              <select value={fGroup} onChange={(e) => setFGroup(e.target.value)}>
-                <option value="">未分组</option>
-                {data.groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="modal-field">
-              <span>或新建分组</span>
-              <input
-                value={fNewGroup}
-                onChange={(e) => setFNewGroup(e.target.value)}
-                placeholder="填了就新建分组"
-              />
-            </label>
-            <div className="modal-actions">
-              <button className="btn primary" onClick={submit}>
-                保存
-              </button>
-              <button
-                className="btn"
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-      </div>
-
-      {/* 右侧：日历 + 任务 */}
-      <div className="wb-right">
-        <CalendarPanel tasks={allItems} />
-      </div>
-    </div>
-  );
-}
-

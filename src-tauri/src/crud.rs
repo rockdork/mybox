@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection};
 
-use crate::db::{item_mapper, log_change, now_ms, validate_status, validate_type, InboxItem, SELECT_COLS};
+use crate::db::{item_mapper, log_change, now_ms, validate_priority, validate_status, validate_type, InboxItem, SELECT_COLS};
 use crate::error::AppError;
 
 /// 创建条目。标题会 trim，空标题视为非法；类型/状态做白名单校验。
@@ -21,7 +21,7 @@ pub fn create_item(
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
     conn.execute(
-        "INSERT INTO inbox_items (id, item_type, title, content, status, source, obsidian_ref, created_at, updated_at) VALUES (?1,?2,?3,?4,'open',?5,NULL,?6,?7)",
+        "INSERT INTO inbox_items (id, item_type, title, content, status, source, obsidian_ref, due_date, priority, pinned, tags, created_at, updated_at) VALUES (?1,?2,?3,?4,'open',?5,NULL,NULL,'normal',0,'',?6,?7)",
         params![id, item_type, title, content, source, now, now],
     )?;
 
@@ -70,6 +70,10 @@ pub fn update_item(
     content: &str,
     status: &str,
     item_type: &str,
+    due_date: Option<i64>,
+    priority: &str,
+    pinned: bool,
+    tags: &str,
 ) -> Result<InboxItem, AppError> {
     let title = title.trim();
     if title.is_empty() {
@@ -78,11 +82,12 @@ pub fn update_item(
     let _ = get_item(conn, id)?; // 不存在则提前返回 NotFound
     validate_type(item_type)?;
     validate_status(status)?;
+    validate_priority(priority)?;
 
     let now = now_ms();
     conn.execute(
-        "UPDATE inbox_items SET title = ?2, content = ?3, status = ?4, item_type = ?5, updated_at = ?6 WHERE id = ?1",
-        params![id, title, content, status, item_type, now],
+        "UPDATE inbox_items SET title = ?2, content = ?3, status = ?4, item_type = ?5, due_date = ?6, priority = ?7, pinned = ?8, tags = ?9, updated_at = ?10 WHERE id = ?1",
+        params![id, title, content, status, item_type, due_date, priority, pinned, tags, now],
     )?;
 
     let item = get_item(conn, id)?;
@@ -183,7 +188,7 @@ mod tests {
     fn update_and_delete_require_existing() {
         let conn = test_conn();
         assert!(matches!(
-            update_item(&conn, "nope", "t", "", "open", "note"),
+            update_item(&conn, "nope", "t", "", "open", "note", None, "normal", false, ""),
             Err(AppError::NotFound(_))
         ));
         assert!(matches!(

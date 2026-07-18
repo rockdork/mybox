@@ -82,11 +82,26 @@ fn update_inbox_item(
     content: String,
     status: String,
     item_type: String,
+    due_date: Option<i64>,
+    priority: Option<String>,
+    pinned: Option<bool>,
+    tags: Option<String>,
 ) -> Result<InboxItem, String> {
     let guard = lock_db(&state);
     let conn = guard.as_ref().expect("database not initialized");
-    let item =
-        crud::update_item(conn, &id, &title, &content, &status, &item_type).map_err(|e| e.to_string())?;
+    let item = crud::update_item(
+        conn,
+        &id,
+        &title,
+        &content,
+        &status,
+        &item_type,
+        due_date,
+        &priority.unwrap_or_else(|| "normal".to_string()),
+        pinned.unwrap_or(false),
+        &tags.unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
     let _ = sync::emit_event(
         &app,
         &item.id,

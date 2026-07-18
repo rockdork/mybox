@@ -1,0 +1,172 @@
+import type { ItemType } from "./types";
+import "./App.css";
+
+export type View = "main" | "workbench" | "settings";
+export type Filter = ItemType;
+
+const Ico = ({ d }: { d: string }) => (
+  <svg
+    className="ico"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d={d} />
+  </svg>
+);
+
+const NAV: { key: Filter; label: string; d: string }[] = [
+  {
+    key: "note",
+    label: "笔记",
+    d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  },
+  {
+    key: "task",
+    label: "任务",
+    d: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+  },
+];
+
+interface SidebarProps {
+  collapsed: boolean;
+  view: View;
+  filter: Filter;
+  counts: Record<ItemType, number>;
+  showAddMenu: boolean;
+  setShowAddMenu: (v: boolean | ((p: boolean) => boolean)) => void;
+  onToggleSidebar: () => void;
+  onNavClick: (f: Filter) => void;
+  onWorkbenchClick: () => void;
+  onSettingsClick: () => void;
+  onAddNote: () => void;
+  onAddTask: () => void;
+}
+
+export default function Sidebar({
+  collapsed,
+  view,
+  filter,
+  counts,
+  showAddMenu,
+  setShowAddMenu,
+  onToggleSidebar,
+  onNavClick,
+  onWorkbenchClick,
+  onSettingsClick,
+  onAddNote,
+  onAddTask,
+}: SidebarProps) {
+  return (
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+      {/* 品牌区 */}
+      <div className="brand">
+        {!collapsed && (
+          <div className="brand-left">
+            <button className="brand-mark" title="mybox">
+              <svg
+                className="brand-ico"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#fff"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
+              </svg>
+            </button>
+            <div className="brand-text">
+              <div className="brand-name">mybox</div>
+            </div>
+          </div>
+        )}
+        <button
+          className="brand-toggle"
+          onClick={onToggleSidebar}
+          title={collapsed ? "展开侧栏" : "收起侧栏"}
+          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+        >
+          <Ico d="M3 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 6v12" />
+        </button>
+      </div>
+
+      {/* 添加按钮 */}
+      <div className="sidebar-add">
+        <button
+          className="add-btn"
+          onClick={() => setShowAddMenu((v) => !v)}
+          onBlur={() => setTimeout(() => setShowAddMenu(false), 150)}
+          title="添加"
+        >
+          <Ico d="M12 5v14M5 12h14" />
+        </button>
+        {showAddMenu && (
+          <div className="add-menu">
+            <button
+              className="add-opt"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setShowAddMenu(false);
+                onAddNote();
+              }}
+            >
+              <Ico d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+              添加笔记
+            </button>
+            <button
+              className="add-opt"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setShowAddMenu(false);
+                onAddTask();
+              }}
+            >
+              <Ico d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              添加任务
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 导航 */}
+      <nav className="nav">
+        <button
+          className={`nav-item ${view === "workbench" ? "active" : ""}`}
+          onClick={onWorkbenchClick}
+          title="工作台"
+        >
+          <Ico d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
+          <span className="nav-label">工作台</span>
+        </button>
+        {NAV.map((f) => (
+          <button
+            key={f.key}
+            className={`nav-item ${filter === f.key && view === "main" ? "active" : ""}`}
+            onClick={() => onNavClick(f.key)}
+            title={f.label}
+          >
+            <Ico d={f.d} />
+            <span className="nav-label">{f.label}</span>
+            <span className="nav-count">{counts[f.key]}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* 底部 */}
+      <div className="sidebar-bottom">
+        <button className="settings-btn" onClick={onSettingsClick}>
+          <Ico d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.91L3.27 8.04a2 2 0 0 0 .9 2.73l.15.09a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.9 2.73l.73 1.29a2 2 0 0 0 2.73.9l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.9l.73-1.29a2 2 0 0 0-.9-2.73l-.15-.09a2 2 0 0 1-1-1.74V12.6a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .9-2.73l-.73-1.29a2 2 0 0 0-2.73-.9l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
+          <span>设置</span>
+        </button>
+      </div>
+
+      <div className="sidebar-foot">v0.1 · Mac 主库</div>
+    </aside>
+  );
+}

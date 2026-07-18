@@ -132,8 +132,8 @@ pub fn apply_event(conn: &rusqlite::Connection, ev: &SyncEvent) -> Result<(), Ap
             }
             conn.execute(
                 "INSERT OR REPLACE INTO inbox_items \
-                 (id, item_type, title, content, status, source, obsidian_ref, created_at, updated_at) \
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                 (id, item_type, title, content, status, source, obsidian_ref, due_date, priority, pinned, tags, created_at, updated_at) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
                 params![
                     item.id,
                     item.item_type,
@@ -142,6 +142,10 @@ pub fn apply_event(conn: &rusqlite::Connection, ev: &SyncEvent) -> Result<(), Ap
                     item.status,
                     item.source,
                     item.obsidian_ref,
+                    item.due_date,
+                    item.priority,
+                    item.pinned,
+                    item.tags,
                     item.created_at,
                     item.updated_at,
                 ],
@@ -334,6 +338,10 @@ mod tests {
             status: "open".into(),
             source: "desktop".into(),
             obsidian_ref: None,
+            due_date: None,
+            priority: "normal".into(),
+            pinned: false,
+            tags: "".into(),
             created_at: 1,
             updated_at: 100,
         };

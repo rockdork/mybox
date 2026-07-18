@@ -531,84 +531,110 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
 
       {showForm && (
         <div
-          className="modal-overlay"
+          className="wb-modal-overlay"
           onClick={() => {
             setShowForm(false);
             resetForm();
           }}
         >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">
-              {editingId ? "编辑工作台项" : "添加工作台项"}
-            </div>
-            <label className="modal-field">
-              <span>名称</span>
-              <input
-                value={fName}
-                onChange={(e) => setFName(e.target.value)}
-                placeholder="如：GitHub"
-                autoFocus
-              />
-            </label>
-            <label className="modal-field">
-              <span>类型</span>
-              <select
-                value={fKind}
-                onChange={(e) => setFKind(e.target.value as LauncherKind)}
-              >
-                <option value="web">网页链接</option>
-                <option value="obsidian">Obsidian 知识库</option>
-                <option value="app">本地应用</option>
-                <option value="folder">文件夹</option>
-              </select>
-            </label>
-            <label className="modal-field">
-              <span>目标</span>
-              <input
-                value={fTarget}
-                onChange={(e) => setFTarget(e.target.value)}
-                placeholder={placeholderFor(fKind)}
-              />
-            </label>
-            <label className="modal-field">
-              <span>图标</span>
-              <input
-                value={fIcon}
-                onChange={(e) => setFIcon(e.target.value)}
-                placeholder="留空用类型图标"
-              />
-            </label>
-            <label className="modal-field">
-              <span>分组</span>
-              <select value={fGroup} onChange={(e) => setFGroup(e.target.value)}>
-                <option value="">未分组</option>
-                {data.groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="modal-field">
-              <span>或新建分组</span>
-              <input
-                value={fNewGroup}
-                onChange={(e) => setFNewGroup(e.target.value)}
-                placeholder="填了就新建分组"
-              />
-            </label>
-            <div className="modal-actions">
-              <button className="btn primary" onClick={submit}>
-                保存
-              </button>
+          <div className="wb-modal" onClick={(e) => e.stopPropagation()}>
+            {/* 标题栏：左文字 + 右关闭 */}
+            <div className="wb-modal-header">
+              <span className="wb-modal-title">
+                {editingId ? "编辑项" : "添加跳转"}
+              </span>
               <button
-                className="btn"
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
+                className="wb-modal-close"
+                onClick={() => { setShowForm(false); resetForm(); }}
+                aria-label="关闭"
+                title="关闭"
               >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            {/* 主区：名称 + 目标 + 类型 pills */}
+            <div className="wb-modal-body">
+              <label className="wb-field">
+                <span className="wb-label">名称</span>
+                <input
+                  value={fName}
+                  onChange={(e) => setFName(e.target.value)}
+                  placeholder="如：GitHub"
+                  autoFocus
+                />
+              </label>
+              <label className="wb-field">
+                <span className="wb-label">目标</span>
+                <input
+                  value={fTarget}
+                  onChange={(e) => setFTarget(e.target.value)}
+                  placeholder={placeholderFor(fKind)}
+                />
+              </label>
+
+              {/* 类型：pill 选择器（替代丑下拉框） */}
+              <div className="wb-field">
+                <span className="wb-label">类型</span>
+                <div className="wb-kind-pills" role="radiogroup">
+                  {(["web", "obsidian", "app", "folder"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="radio"
+                      aria-checked={fKind === k}
+                      className={`wb-kind-pill${fKind === k ? " active" : ""}`}
+                      onClick={() => setFKind(k)}
+                    >
+                      <span className={`wb-kind-dot kind-${k}`} />
+                      {KIND_LABELS[k]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 分组：单行智能输入（选已有 或 输入新名） */}
+              <label className="wb-field">
+                <span className="wb-label">分组</span>
+                <div className="wb-group-row">
+                  {data.groups.length > 0 ? (
+                    <>
+                      <select value={fGroup} onChange={(e) => setFGroup(e.target.value)} className="wb-group-select">
+                        <option value="">未分组</option>
+                        {data.groups.map((g) => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                      <span className="wb-group-or">或</span>
+                    </>
+                  ) : null}
+                  <input
+                    value={fNewGroup}
+                    onChange={(e) => setFNewGroup(e.target.value)}
+                    placeholder={data.groups.length > 0 ? "新建分组名…" : "分组名…"}
+                    className={data.groups.length > 0 ? "wb-group-new" : ""}
+                  />
+                </div>
+              </label>
+
+              {/* 图标：收起到底部次要区 */}
+              <label className="wb-field wb-field-weak">
+                <span className="wb-label">图标 <em>(可选)</em></span>
+                <input
+                  value={fIcon}
+                  onChange={(e) => setFIcon(e.target.value)}
+                  placeholder="留空使用类型默认图标"
+                />
+              </label>
+            </div>
+
+            {/* 底部操作栏 */}
+            <div className="wb-modal-footer">
+              <button className="btn btn-text" onClick={() => { setShowForm(false); resetForm(); }}>
                 取消
+              </button>
+              <button className="btn btn-primary-lg" onClick={submit}>
+                {editingId ? "保存修改" : "添加"}
               </button>
             </div>
           </div>

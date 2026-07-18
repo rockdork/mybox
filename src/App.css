@@ -2106,12 +2106,6 @@ body {
   color: var(--accent);
   font-weight: 600;
 }
-.wb-kind-dot {
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
 
 /* 分组行（select + "或" + input） */
 .wb-group-row {

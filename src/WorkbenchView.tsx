@@ -605,7 +605,6 @@ function WorkbenchView({ allItems, syncTick }: { allItems: InboxItem[]; syncTick
                       className={`wb-kind-pill${fKind === k ? " active" : ""}`}
                       onClick={() => setFKind(k)}
                     >
-                      <span className={`wb-kind-dot kind-${k}`} />
                       {KIND_LABELS[k]}
                     </button>
                   ))}

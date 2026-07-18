@@ -254,7 +254,6 @@ body {
   width: 240px;
   flex: 0 0 240px;
   background: var(--bg);
-  border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -266,6 +265,36 @@ body {
   transition: width var(--dur-slow) var(--ease),
     flex-basis var(--dur-slow) var(--ease),
     padding var(--dur-slow) var(--ease);
+}
+
+/* 侧栏拖拽分割条 */
+.sidebar-resize {
+  width: 5px;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  position: relative;
+  z-index: var(--z-dropdown);
+  transition: background 0.15s ease;
+}
+.sidebar-resize::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.sidebar-resize:hover::after {
+  background: var(--accent);
+}
+.sidebar-resize.active {
+  cursor: col-resize;
+}
+.sidebar-resize.active::after {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 122, 255, 0.3);
 }
 
 .brand {
@@ -414,6 +443,7 @@ body {
   width: 68px;
   flex: 0 0 68px;
   padding: var(--sp-5) var(--sp-2);
+  border-right: 1px solid var(--line-soft);
 }
 .sidebar.collapsed .brand {
   justify-content: center;

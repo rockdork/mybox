@@ -45,6 +45,7 @@ interface SidebarProps {
   onSettingsClick: () => void;
   onAddNote: () => void;
   onAddTask: () => void;
+  style?: React.CSSProperties;
 }
 
 export default function Sidebar({
@@ -60,6 +61,7 @@ export default function Sidebar({
   onSettingsClick,
   onAddNote,
   onAddTask,
+  style,
 }: SidebarProps) {
   const addRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +79,7 @@ export default function Sidebar({
   }, [showAddMenu, setShowAddMenu]);
 
   return (
-    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={style}>
       {/* 品牌区 */}
       <div className="brand">
         {!collapsed && (

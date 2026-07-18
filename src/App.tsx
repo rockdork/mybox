@@ -188,6 +188,8 @@ function App() {
   const [moving, setMoving] = useState(false);
   const [view, setView] = useState<View>("workbench");
   const [collapsed, setCollapsed] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [resizing, setResizing] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [taskCollapsed, setTaskCollapsed] = useState<Record<string, boolean>>({});
 
@@ -317,6 +319,40 @@ function App() {
       window.setTimeout(() => sb.classList.remove("animate-collapse"), 260);
     }
     setCollapsed((c) => !c);
+  };
+
+  // 侧栏拖拽调整宽度
+  const SIDEBAR_MIN = 180;
+  const SIDEBAR_MAX = 420;
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setResizing(true);
+    const startX = e.clientX;
+    const startWidth = collapsed ? 68 : sidebarWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      if (collapsed) {
+        // 从收起状态拖出 → 自动展开到合理宽度
+        const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, 68 + delta));
+        setSidebarWidth(newW);
+        if (delta > 10 && collapsed) setCollapsed(false);
+      } else {
+        setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + delta)));
+      }
+    };
+
+    const onMouseUp = () => {
+      setResizing(false);
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      // 拖拽结束时如果太窄就收起
+      if (!collapsed && sidebarWidth < SIDEBAR_MIN + 20) {
+        toggleSidebar();
+      }
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
   };
 
   const titleRef = useRef<HTMLInputElement>(null);
@@ -721,7 +757,18 @@ function App() {
             onSettingsClick={() => setView("settings")}
             onAddNote={() => { setView("main"); setFilter("note"); setTimeout(() => titleRef.current?.focus(), 0); }}
             onAddTask={() => { setView("main"); setFilter("task"); setTimeout(() => titleRef.current?.focus(), 0); }}
+            style={{ width: collapsed ? 68 : sidebarWidth, flexShrink: 0 }}
           />
+
+          {/* 侧栏拖拽分割条 */}
+          {!collapsed && (
+            <div
+              className={`sidebar-resize${resizing ? " active" : ""}`}
+              onMouseDown={startResize}
+              onDoubleClick={toggleSidebar}
+              title="拖拽调整宽度，双击收起"
+            />
+          )}
 
           <main className={`main${filter === "task" && view === "main" ? " task-main" : ""}`}>
             {view === "workbench" ? (

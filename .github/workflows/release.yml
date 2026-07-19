@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: macos-14 # Apple Silicon (arm64)，与本地构建架构一致
+    permissions:
+      contents: write # 允许 softprops/action-gh-release 创建 GitHub Release
     steps:
       - name: Checkout
         uses: actions/checkout@v4

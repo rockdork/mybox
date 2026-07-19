@@ -39,7 +39,6 @@ interface SidebarProps {
   counts: Record<ItemType, number>;
   showAddMenu: boolean;
   setShowAddMenu: (v: boolean | ((p: boolean) => boolean)) => void;
-  onToggleSidebar: () => void;
   onNavClick: (f: Filter) => void;
   onWorkbenchClick: () => void;
   onSettingsClick: () => void;
@@ -56,7 +55,6 @@ export default function Sidebar({
   counts,
   showAddMenu,
   setShowAddMenu,
-  onToggleSidebar,
   onNavClick,
   onWorkbenchClick,
   onSettingsClick,
@@ -82,39 +80,24 @@ export default function Sidebar({
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={style}>
-      {/* 品牌区 */}
+      {/* 品牌区：永远收起，顶部展示 inbox 图标 */}
       <div className="brand">
-        {!collapsed && (
-          <div className="brand-left">
-            <button className="brand-mark" title="mybox">
-              <svg
-                className="brand-ico"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {/* inbox / 收集箱字形：开口盒 + 翻盖 */}
-                <path d="M5 10h14a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1v-7a1 1 0 011-1z" />
-                <path d="M5 10l7-5 7 5" />
-                <line x1="12" y1="5" x2="12" y2="10" />
-              </svg>
-            </button>
-            <div className="brand-text">
-              <div className="brand-name">mybox</div>
-            </div>
-          </div>
-        )}
-        <button
-          className="brand-toggle"
-          onClick={onToggleSidebar}
-          title={collapsed ? "展开侧栏" : "收起侧栏"}
-          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-        >
-          <Ico d="M3 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 6v12" />
-        </button>
+        <div className="brand-mark" title="mybox">
+          <svg
+            className="brand-ico"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {/* inbox / 收集箱字形：开口盒 + 翻盖 */}
+            <path d="M5 10h14a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1v-7a1 1 0 011-1z" />
+            <path d="M5 10l7-5 7 5" />
+            <line x1="12" y1="5" x2="12" y2="10" />
+          </svg>
+        </div>
       </div>
 
       {/* 添加按钮 */}
@@ -137,7 +120,7 @@ export default function Sidebar({
                   onAddLauncher();
                 }}
               >
-                <Ico d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z M13 2v7h7" />
+                <Ico d="M7 7h10v10 M7 17 17 7" />
                 添加跳转
               </button>
             )}
@@ -149,7 +132,7 @@ export default function Sidebar({
                 onAddNote();
               }}
             >
-              <Ico d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+              <Ico d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6" />
               添加笔记
             </button>
             <button

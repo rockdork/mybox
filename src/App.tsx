@@ -187,9 +187,7 @@ function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [moving, setMoving] = useState(false);
   const [view, setView] = useState<View>("workbench");
-  const [collapsed, setCollapsed] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [resizing, setResizing] = useState(false);
+  const collapsed = true; // 侧栏固定收起，不支持展开
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [launcherTrigger, setLauncherTrigger] = useState(0);
   const [taskCollapsed, setTaskCollapsed] = useState<Record<string, boolean>>({});
@@ -215,6 +213,25 @@ function App() {
       return () => mq.removeEventListener("change", apply);
     }
   }, [theme]);
+
+  // 拖拽窗口尺寸期间，挂 .resizing 类全局暂停过渡/动画（见 App.css），
+  // 避免卡片网格 reflow 时 hover/transform 过渡重放造成的「抽动」闪烁；松手后恢复。
+  useEffect(() => {
+    let stopTimer: number | undefined;
+    const onResize = () => {
+      document.documentElement.classList.add("resizing");
+      if (stopTimer) clearTimeout(stopTimer);
+      stopTimer = window.setTimeout(() => {
+        document.documentElement.classList.remove("resizing");
+      }, 150);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (stopTimer) clearTimeout(stopTimer);
+    };
+  }, []);
+
   const changeTheme = (t: "light" | "dark" | "system") => {
     localStorage.setItem("mybox-theme", t);
     setTheme(t);
@@ -280,81 +297,6 @@ function App() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 窗口宽度变窄到阈值以下时自动收起侧栏（仅自动收起，不强制展开，尊重用户手动操作）
-  const AUTO_COLLAPSE_WIDTH = 560;
-  const collapsedRef = useRef(collapsed);
-  useEffect(() => {
-    collapsedRef.current = collapsed;
-  }, [collapsed]);
-
-  useEffect(() => {
-    let stopTimer: number | undefined;
-    const onResize = () => {
-      // 拖拽窗口尺寸期间暂停所有 CSS 过渡/动画，避免内容区抖动不跟手
-      document.documentElement.classList.add("resizing");
-      // 仅在「向下越过阈值且当前未收起」时收起一次，避免拖拽中反复 setState 重渲染
-      if (window.innerWidth <= AUTO_COLLAPSE_WIDTH && !collapsedRef.current) {
-        setCollapsed(true);
-      }
-      if (stopTimer) clearTimeout(stopTimer);
-      // 松手 160ms 后再恢复过渡/动画（稍长一点，覆盖拖拽中偶发的停顿）
-      stopTimer = window.setTimeout(() => {
-        document.documentElement.classList.remove("resizing");
-      }, 160);
-    };
-    window.addEventListener("resize", onResize);
-    onResize(); // 初始若已处于窄窗口，直接收起
-    return () => {
-      window.removeEventListener("resize", onResize);
-      if (stopTimer) clearTimeout(stopTimer);
-    };
-  }, []);
-
-  // 点击收起/展开：临时给侧栏挂动画类触发 width 过渡，动画结束后移除，
-  // 保证「仅手动折叠有平滑动画、拖拽窗口永不触发动画」（见 App.css .sidebar.animate-collapse）
-  const toggleSidebar = () => {
-    const sb = document.querySelector(".sidebar");
-    if (sb) {
-      sb.classList.add("animate-collapse");
-      window.setTimeout(() => sb.classList.remove("animate-collapse"), 260);
-    }
-    setCollapsed((c) => !c);
-  };
-
-  // 侧栏拖拽调整宽度
-  const SIDEBAR_MIN = 180;
-  const SIDEBAR_MAX = 420;
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setResizing(true);
-    const startX = e.clientX;
-    const startWidth = collapsed ? 68 : sidebarWidth;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      const delta = ev.clientX - startX;
-      if (collapsed) {
-        // 从收起状态拖出 → 自动展开到合理宽度
-        const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, 68 + delta));
-        setSidebarWidth(newW);
-        if (delta > 10 && collapsed) setCollapsed(false);
-      } else {
-        setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + delta)));
-      }
-    };
-
-    const onMouseUp = () => {
-      setResizing(false);
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      // 拖拽结束时如果太窄就收起
-      if (!collapsed && sidebarWidth < SIDEBAR_MIN + 20) {
-        toggleSidebar();
-      }
-    };
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  };
 
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
@@ -752,29 +694,17 @@ function App() {
             counts={counts}
             showAddMenu={showAddMenu}
             setShowAddMenu={setShowAddMenu}
-            onToggleSidebar={toggleSidebar}
             onNavClick={(f) => { setView("main"); setFilter(f); }}
             onWorkbenchClick={() => setView("workbench")}
             onSettingsClick={() => setView("settings")}
             onAddNote={() => { setView("main"); setFilter("note"); setTimeout(() => titleRef.current?.focus(), 0); }}
             onAddTask={() => { setView("main"); setFilter("task"); setTimeout(() => titleRef.current?.focus(), 0); }}
             onAddLauncher={() => { setView("workbench"); setLauncherTrigger((t) => t + 1); }}
-            style={{ width: collapsed ? 68 : sidebarWidth, flexShrink: 0 }}
           />
-
-          {/* 侧栏拖拽分割条 */}
-          {!collapsed && (
-            <div
-              className={`sidebar-resize${resizing ? " active" : ""}`}
-              onMouseDown={startResize}
-              onDoubleClick={toggleSidebar}
-              title="拖拽调整宽度，双击收起"
-            />
-          )}
 
           <main className={`main${filter === "task" && view === "main" ? " task-main" : ""}`}>
             {view === "workbench" ? (
-              <WorkbenchView allItems={allItems} syncTick={syncTick} openFormTrigger={launcherTrigger} />
+              <WorkbenchView syncTick={syncTick} openFormTrigger={launcherTrigger} />
             ) : filter === "task" ? (
               <div className="task-layout">
                 <div className="task-list-pane">

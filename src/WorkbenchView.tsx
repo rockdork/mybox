@@ -2,23 +2,20 @@ import type * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getWorkbench, saveWorkbench, openLauncher } from "./api";
 import type {
-  InboxItem,
   LauncherItem,
   LauncherKind,
   LauncherGroup,
   WorkbenchData,
 } from "./types";
 import { ErrorBanner } from "./ErrorBanner";
-import CalendarPanel from "./CalendarPanel";
 import "./App.css";
 
 // 类型图标（lucide 线性图标，统一描边风格；设计规范要求图标库锁定 lucide）
 const KIND_ICON_PATHS: Record<LauncherKind, React.ReactNode> = {
   web: (
     <>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-      <path d="M2 12h20" />
+      <path d="M7 7h10v10" />
+      <path d="M7 17 17 7" />
     </>
   ),
   obsidian: (
@@ -60,7 +57,7 @@ function placeholderFor(kind: LauncherKind): string {
   }
 }
 
-function WorkbenchView({ allItems, syncTick, openFormTrigger }: { allItems: InboxItem[]; syncTick: number; openFormTrigger?: number }) {
+function WorkbenchView({ syncTick, openFormTrigger }: { syncTick: number; openFormTrigger?: number }) {
   const [data, setData] = useState<WorkbenchData>({ groups: [], items: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -444,6 +441,8 @@ function WorkbenchView({ allItems, syncTick, openFormTrigger }: { allItems: Inbo
                     onDragStart={(e) => {
                       setDragGroupId(s.groupId as string);
                       e.dataTransfer.effectAllowed = "move";
+                      // WebKit（Tauri macOS）必须 setData 才能启动拖拽
+                      e.dataTransfer.setData("text/plain", s.groupId as string);
                     }}
                     onDragEnd={() => {
                       setDragGroupId(null);
@@ -494,6 +493,8 @@ function WorkbenchView({ allItems, syncTick, openFormTrigger }: { allItems: Inbo
                     onDragStart={(e) => {
                       setDragItemId(it.id);
                       e.dataTransfer.effectAllowed = "move";
+                      // WebKit（Tauri macOS）必须 setData 才能启动拖拽
+                      e.dataTransfer.setData("text/plain", it.id);
                     }}
                     onDragEnd={() => {
                       setDragItemId(null);
@@ -669,11 +670,6 @@ function WorkbenchView({ allItems, syncTick, openFormTrigger }: { allItems: Inbo
         </div>
       )}
     </div>
-      </div>
-
-      {/* 右侧：日历 + 任务 */}
-      <div className="wb-right">
-        <CalendarPanel tasks={allItems} />
       </div>
     </div>
   );

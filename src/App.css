@@ -241,7 +241,7 @@ body {
   overflow: hidden;
 }
 
-/* 拖拽窗口尺寸期间暂停所有过渡/动画，避免内容区抖动不跟手；松手后恢复 */
+/* 拖拽窗口尺寸期间暂停所有过渡/动画，避免卡片网格 reflow 时过渡重放造成抽动闪烁；松手后恢复 */
 .resizing *,
 .resizing *::before,
 .resizing *::after {
@@ -249,100 +249,32 @@ body {
   animation: none !important;
 }
 
-/* ===== 侧栏 ===== */
+/* ===== 侧栏（固定收起，68px） ===== */
 .sidebar {
-  width: 240px;
-  flex: 0 0 240px;
+  width: 68px;
+  flex: 0 0 68px;
   background: var(--bg);
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--sp-5) var(--sp-3);
-  /* 默认无过渡：窗口拖拽缩放时侧栏宽度即时跟随，不会因 width 过渡重放而抖动。
-     折叠动画只在用户点击收起/展开按钮时，由 JS 临时挂 .animate-collapse 类触发（见 App.tsx）。 */
-}
-.sidebar.animate-collapse {
-  transition: width var(--dur-slow) var(--ease),
-    flex-basis var(--dur-slow) var(--ease),
-    padding var(--dur-slow) var(--ease);
-}
-
-/* 侧栏拖拽分割条 */
-.sidebar-resize {
-  width: 5px;
-  flex: 0 0 5px;
-  cursor: col-resize;
-  position: relative;
-  z-index: var(--z-dropdown);
-  transition: background 0.15s ease;
-}
-.sidebar-resize::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: transparent;
-  transition: background 0.15s ease;
-}
-.sidebar-resize:hover::after {
-  background: var(--accent);
-}
-.sidebar-resize.active {
-  cursor: col-resize;
-}
-.sidebar-resize.active::after {
-  background: var(--accent);
-  box-shadow: 0 0 6px rgba(0, 122, 255, 0.3);
+  /* 与主内容区 .wb 的 padding: 18px 对齐，品牌图标和「工作台」标题齐平 */
+  padding: 18px var(--sp-2);
+  border-right: 1px solid var(--line-soft);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: var(--sp-1) var(--sp-2) var(--sp-4);
-}
-.brand-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.brand-toggle {
-  margin-left: auto;
-  width: 28px;
-  height: 28px;
-  border: none;
-  padding: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease);
-}
-.brand-toggle:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-.brand-toggle .ico {
-  width: var(--ico);
-  height: var(--ico);
+  gap: 10px;
+  /* 与侧栏顶部 padding 一致，不额外偏移 */
+  padding: 0 var(--sp-2) var(--sp-4);
 }
 .sidebar.collapsed .brand {
   justify-content: center;
   padding: var(--sp-1) 0 var(--sp-4);
 }
-.sidebar.collapsed .brand-toggle {
-  margin-left: 0;
-}
-.sidebar.collapsed .brand-toggle:hover {
-  background: transparent;
-  color: var(--accent);
-}
+/* 品牌图标：inbox 收集箱字形，永远收起态展示 */
 .brand-mark {
   width: 34px;
   height: 34px;
@@ -356,15 +288,6 @@ body {
   color: #fff;
   flex: 0 0 34px;
   cursor: default;
-  transition: transform var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
-}
-.sidebar.collapsed .brand-mark {
-  cursor: pointer;
-}
-.sidebar.collapsed .brand-mark:hover {
-  transform: scale(1.06);
-  box-shadow: var(--shadow-md);
 }
 .brand-mark .brand-ico {
   width: 18px;
@@ -438,19 +361,12 @@ body {
   color: var(--text-3);
 }
 
-/* ===== 侧栏收起态 ===== */
-.sidebar.collapsed {
-  width: 68px;
-  flex: 0 0 68px;
-  padding: var(--sp-5) var(--sp-2);
-  border-right: 1px solid var(--line-soft);
-}
+/* ===== 侧栏收起态（永久生效，子元素样式） ===== */
 .sidebar.collapsed .brand {
   justify-content: center;
   padding: var(--sp-1) 0 var(--sp-4);
 }
-.sidebar.collapsed .brand-text,
-.sidebar.collapsed .brand-mark {
+.sidebar.collapsed .brand-text {
   display: none;
 }
 .sidebar.collapsed .nav-item {
@@ -478,7 +394,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: var(--sp-6) 28px;
+  /* 与侧栏 .sidebar 的 padding-top: 18px 对齐 */
+  padding: 18px 28px;
   gap: 16px;
 }
 
@@ -1510,7 +1427,7 @@ body {
 
 /* ===== 工作台（启动器）===== */
 .wb {
-  padding: 18px 22px 32px;
+  padding: 0 22px 32px;
   max-width: 920px;
 }
 .wb-head {
@@ -1636,7 +1553,7 @@ body {
 .sidebar-add {
   position: relative;
   display: flex;
-  padding: 0 6px;
+  justify-content: center;
   margin-bottom: 8px;
 }
 .add-btn {
@@ -1669,26 +1586,21 @@ body {
 }
 .add-menu {
   position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  top: 0;
+  left: calc(100% + 6px);
   z-index: var(--z-popover);
-  min-width: 160px;
+  white-space: nowrap;
   padding: 6px;
   background: var(--panel);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
-  animation: wb-menu-in var(--dur-fast) var(--ease);
+  /* 纯淡入，不用 transform 避免和居中 translateY(-50%) 冲突闪动 */
+  animation: wb-menu-in 0.15s ease-out;
 }
 @keyframes wb-menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .add-opt {
   display: flex;
@@ -1849,69 +1761,77 @@ body {
 }
 .wb-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 14px 16px;
   justify-content: start; /* 少量项时左对齐，不撑满整行 */
 }
+/* Safari 收藏栏风格：大图标 + 文字，无背景卡片 */
 .wb-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 20px 12px 16px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: border-color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease),
+  gap: 6px;
+  padding: 8px 6px 4px;
+  cursor: grab;
+  transition: opacity var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
+  user-select: none;
 }
 .wb-card:hover {
-  border-color: var(--line);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  opacity: 0.7;
 }
 .wb-card:active {
-  transform: translateY(1px);
+  cursor: grabbing;
+  opacity: 0.5;
 }
 .wb-card.dragging {
-  opacity: 0.45;
+  opacity: 0.35;
+  cursor: grabbing;
+}
+/* 禁止卡片内图标触发浏览器原生「图片拖拽」，避免抢走 HTML5 拖拽事件 */
+.wb-card .wb-kind-ico,
+.wb-card .wb-icon-custom {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 .wb-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-lg);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent-weak);
-  color: var(--accent);
-  cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease);
+  /* SF Symbols 风格：浅色底 + 彩色线性图标 */
+  transition: transform var(--dur-fast) var(--ease);
 }
 .wb-icon .wb-kind-ico {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 .wb-icon .wb-icon-custom {
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
 }
 .wb-card:hover .wb-icon {
   transform: scale(1.06);
 }
-.wb-icon.kind-web { background: var(--kind-web); color: var(--kind-web-fg); }
-.wb-icon.kind-obsidian { background: var(--kind-obsidian); color: var(--kind-obsidian-fg); }
-.wb-icon.kind-app { background: var(--kind-app); color: var(--kind-app-fg); }
-.wb-icon.kind-folder { background: var(--kind-folder); color: var(--kind-folder-fg); }
+/* 浅色底 + 彩色描边（双色线性，SF Symbols 风） */
+.wb-icon.kind-web { background: var(--kind-web); }
+.wb-icon.kind-obsidian { background: var(--kind-obsidian); }
+.wb-icon.kind-app { background: var(--kind-app); }
+.wb-icon.kind-folder { background: var(--kind-folder); }
+
+/* 图标描边用对应前景色 */
+.wb-icon.kind-web { color: var(--kind-web-fg); }
+.wb-icon.kind-obsidian { color: var(--kind-obsidian-fg); }
+.wb-icon.kind-app { color: var(--kind-app-fg); }
+.wb-icon.kind-folder { color: var(--kind-folder-fg); }
 .wb-name {
-  font-size: var(--fs-body);
-  font-weight: 500;
-  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text-2);
   text-align: center;
   max-width: 100%;
   overflow: hidden;
@@ -1920,10 +1840,10 @@ body {
 }
 .wb-actions {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: -2px;
+  right: -4px;
   display: flex;
-  gap: 4px;
+  gap: 3px;
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease);
 }
@@ -2179,37 +2099,10 @@ body {
   min-width: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  border-right: 1px solid var(--line-soft);
-  padding-right: 2px; /* 为 border-right 留空间 */
 }
 .wb-left .wb {
-  padding: 18px 18px 32px;
+  padding: 0 18px 32px;
   max-width: none;
-}
-.wb-right {
-  flex: 0 0 320px;
-  min-width: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* 响应式：窄屏时上下堆叠 */
-@media (max-width: 760px) {
-  .wb-layout {
-    flex-direction: column;
-  }
-  .wb-left {
-    flex: 1;
-    max-height: 45%;
-    border-right: none;
-    border-bottom: 1px solid var(--line-soft);
-  }
-  .wb-right {
-    flex: 0 0 auto;
-  }
 }
 
 /* ===== 任务视图双栏布局（左列表 + 右日历） ===== */

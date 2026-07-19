@@ -265,7 +265,7 @@ function App() {
     try {
       const res = await fetch(
         `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-        { headers: { Accept: "application/vnd.github+json" } },
+        { headers: { Accept: "application/vnd.github+json", "User-Agent": "mybox" } },
       );
       if (!res.ok) throw new Error(`GitHub 返回 ${res.status}`);
       const data = await res.json();

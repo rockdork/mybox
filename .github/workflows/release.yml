@@ -28,28 +28,11 @@ jobs:
         run: npm install
 
       - name: Tauri build (ad-hoc signed)
-        # 无 Apple Developer 证书，用 ad-hoc 签名避免 macOS 标记为「已损毁」
+        # TAURI_SIGNING_IDENTITY="-": ad-hoc 签名（无需 Apple Developer 证书）
+        # Tauri 自动完成：签名 .app + 打包正规 dmg（含背景图/Applications 快捷方式）
         env:
-          TAURI_SIGNING_IDENTITY: "-" # ad-hoc sign（无需证书）
+          TAURI_SIGNING_IDENTITY: "-"
         run: npm run tauri build
-
-      - name: Ad-hoc sign .app & repackage dmg
-        # 对 .app 做 ad-hoc 签名后重新打 dmg（CI 产出的原始 dmg 可能未含签名）
-        run: |
-          APP_PATH="src-tauri/target/release/bundle/macos/mybox.app"
-          DMG_DIR="src-tauri/target/release/bundle/dmg"
-          VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-          
-          # 深度 ad-hoc 签名
-          codesign --force --deep --sign - "$APP_PATH"
-          codesign -v "$APP_PATH" 2>&1 || true
-          
-          # 删除旧 dmg，用 hdiutil 重新打包
-          rm -f "$DMG_DIR"/*.dmg
-          hdiutil create -volname "mybox" -srcfolder "$APP_PATH" -ov -format UDZO \
-            "$DMG_DIR/mybox_${VERSION}_aarch64.dmg"
-          
-          echo "Signed dmg ready: $DMG_DIR/mybox_${VERSION}_aarch64.dmg"
 
       - name: Package .app as zip (便于直接下载)
         run: |

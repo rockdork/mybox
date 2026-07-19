@@ -28,9 +28,20 @@ jobs:
         run: npm install
 
       - name: Tauri build (app bundle only — no dmg, no signing)
-        # --bundles app: 只产 .app，不产 dmg/pkg
+        # bundle.targets 已在 tauri.conf.json 设为 ["app"]：只产 .app，不产 dmg
+        # 注意：不能用命令行 --bundles app，那会跳过 frontendDist 复制导致白屏
         # 签名由后续步骤手动完成（Tauri 内置 ad-hoc 签名不完整，会导致 Gatekeeper 报"已损毁"）
-        run: npm run tauri build -- --bundles app
+        run: npm run tauri build
+
+      - name: Inject frontend into .app (Tauri 2 app bundle omits frontendDist copy)
+        # Tauri 2 在纯 app bundle 模式下不把 frontendDist 复制进包，导致白屏。
+        # 这里手动把 vite 构建产物注入 app 的 Resources，与 Tauri 正常打包结果一致。
+        run: |
+          APP="src-tauri/target/release/bundle/macos/mybox.app"
+          cp -R dist/index.html "$APP/Contents/Resources/"
+          cp -R dist/assets "$APP/Contents/Resources/"
+          cp dist/*.svg "$APP/Contents/Resources/" 2>/dev/null || true
+          echo "Frontend injected:" && ls "$APP/Contents/Resources/"
 
       - name: Deep ad-hoc sign .app (fixes Gatekeeper "damaged")
         run: |

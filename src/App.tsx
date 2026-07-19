@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   createItem,
@@ -263,48 +264,17 @@ function App() {
   const checkUpdate = async () => {
     setUpdateInfo((p) => ({ ...p, status: "checking" }));
     try {
-      // 方案 A：用 releases/latest 重定向获取最新版本（无需 API 认证，不触发 403）
-      let latest = "";
-      let releaseUrl = "";
-
-      try {
-        // github.com/{owner}/{repo}/latest 会 302 重定向到最新 Release 页面
-        // 从重定向后的 URL 提取 tag（如 /releases/tag/v0.1.3 → v0.1.3）
-        const res = await fetch(
-          `https://github.com/${GITHUB_REPO}/releases/latest`,
-          { method: "HEAD", redirect: "manual" },
-        );
-        if (res.status === 302 || res.status === 301) {
-          const loc = res.headers.get("Location") ?? "";
-          const m = loc.match(/\/tag\/(v[^\s?]+)$/);
-          if (m?.[1]) {
-            latest = m[1].replace(/^v/i, "");
-            releaseUrl = loc.startsWith("http") ? loc : `https://github.com${loc}`;
-          }
-        }
-      } catch {
-        /* fallback 到方案 B */
-      }
-
-      // 方案 B（fallback）：尝试 GitHub API（带 User-Agent + Accept 头）
-      if (!latest) {
-        const apiRes = await fetch(
-          `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-          { headers: { Accept: "application/vnd.github+json", "User-Agent": "mybox" } },
-        );
-        if (!apiRes.ok) throw new Error(`GitHub 返回 ${apiRes.status}`);
-        const data = await apiRes.json();
-        latest = String(data.tag_name ?? "").replace(/^v/i, "");
-        releaseUrl = data.html_url ?? `https://github.com/${GITHUB_REPO}/releases`;
-      }
-
+      // 使用 Rust 原生命令检查更新（绕过 WebView CORS 限制）
+      const data = await invoke<{ latest: string; url: string }>("check_for_update", {
+        repo: GITHUB_REPO,
+      });
       const cur = appVersionRef.current.replace(/^v/i, "");
-      const isNewer = latest !== "" && compareVer(latest, cur) > 0;
+      const isNewer = data.latest !== "" && compareVer(data.latest, cur) > 0;
       setUpdateInfo({
         status: isNewer ? "available" : "latest",
-        latest,
-        url: releaseUrl || `https://github.com/${GITHUB_REPO}/releases`,
-        publishedAt: undefined, // 方式 A 无法拿到 published_at
+        latest: data.latest,
+        url: data.url || `https://github.com/${GITHUB_REPO}/releases`,
+        publishedAt: undefined,
       });
     } catch (e) {
       setUpdateInfo({ status: "error", error: String(e) });

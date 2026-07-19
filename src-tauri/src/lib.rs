@@ -231,6 +231,43 @@ fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ============ 更新检查 ============
+
+/// 通过 Rust 原生 HTTP 请求检查 GitHub 最新版本（绕过 WebView/CORS 限制）。
+/// 原理：HEAD 请求 releases/latest → 从 302 Location 头提取 tag 名。
+#[tauri::command]
+fn check_for_update(repo: String) -> Result<serde_json::Value, String> {
+    let url = format!("https://github.com/{}/releases/latest", repo);
+
+    // 不自动跟随重定向，手动读取 302 的 Location 头
+    let config = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .build();
+    let agent: ureq::Agent = config.into();
+
+    match agent.head(&url).call() {
+        Ok(res) => {
+            let status = res.status();
+            if status == 302 || status == 301 {
+                if let Some(loc_val) = res.headers().get("Location") {
+                    if let Ok(loc) = loc_val.to_str() {
+                        // URL 形如 https://github.com/owner/repo/releases/tag/v0.1.6
+                        let tag = loc.split("/tag/").last().unwrap_or("").trim_start_matches('v');
+                        if !tag.is_empty() {
+                            return Ok(serde_json::json!({
+                                "latest": tag,
+                                "url": loc.to_string(),
+                            }));
+                        }
+                    }
+                }
+            }
+            Err(format!("GitHub 返回 HTTP {}", status))
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 // ============ iCloud 同步 ============
 
 /// 开启/更换同步目录（指向用户自选的 iCloud Drive 文件夹）。
@@ -366,6 +403,7 @@ pub fn run() {
             get_workbench,
             save_workbench,
             workbench::open_launcher,
+            check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

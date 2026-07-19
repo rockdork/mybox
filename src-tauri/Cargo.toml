@@ -29,3 +29,5 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 # iCloud 同步：监听 sync 文件夹变化，触发跨设备重放
 notify = "6"
+# 更新检查：轻量同步 HTTP 客户端（Rust 原生请求，绕过 WebView/CORS 限制）
+ureq = { version = "3", default-features = false, features = ["rustls"] }

@@ -1297,6 +1297,8 @@ body {
   width: 100%;
   margin: 0 auto;
 }
+.settings-body::-webkit-scrollbar { display: none; }
+.settings-body { -ms-overflow-style: none; scrollbar-width: none; }
 .settings-card {
   background: var(--panel);
   border: 1px solid var(--line-soft);
